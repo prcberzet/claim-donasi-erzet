@@ -45,11 +45,6 @@
                         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
                         <span x-text="connectionStatus"></span>
                     </div>
-                    <input type="file" accept="application/json" x-ref="importFileInput" @change="importFromJSON($event)" class="hidden">
-                    <button @click="triggerImportFile()" :disabled="isMigrating" class="mt-2 w-full flex items-center justify-center gap-2 text-[10px] font-bold text-white bg-sky-600 hover:bg-sky-500 p-2 rounded-lg shadow transition disabled:opacity-50">
-                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"></path></svg>
-                        Import dari JSON
-                    </button>
                 </div>
             </div>
             <nav class="flex-grow space-y-1 px-3 mt-4">
@@ -74,30 +69,6 @@
         <!-- Main Content -->
         <main class="flex-grow p-4 md:p-8 overflow-y-auto">
 
-            <!-- BANNER: MIGRASI DATA LOKAL LAMA KE FIRESTORE -->
-            <div x-show="showMigrationBanner" x-cloak x-transition class="max-w-7xl mx-auto mb-6">
-                <div class="bg-amber-50 border border-amber-300 rounded-xl p-4 md:p-5 flex flex-col md:flex-row md:items-center gap-4 shadow-sm">
-                    <div class="flex items-start gap-3 flex-grow">
-                        <svg class="w-6 h-6 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-                        <div>
-                            <p class="font-bold text-amber-800 text-sm">Data lama dari penyimpanan perangkat ini ditemukan</p>
-                            <p class="text-amber-700 text-xs mt-1">
-                                Ditemukan <span class="font-semibold" x-text="migrationInfo.layananCount"></span> data laporan layanan dan
-                                <span class="font-semibold" x-text="migrationInfo.klaimCount"></span> data klaim dari versi lokal sebelumnya.
-                                Migrasikan sekarang agar tersinkron realtime ke semua perangkat.
-                            </p>
-                        </div>
-                    </div>
-                    <div class="flex gap-2 flex-shrink-0">
-                        <button @click="dismissMigrationBanner()" :disabled="isMigrating" class="px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100 rounded-lg transition disabled:opacity-50">Lewati</button>
-                        <button @click="migrateLocalData()" :disabled="isMigrating" class="px-4 py-2 text-xs font-bold text-white bg-amber-500 hover:bg-amber-600 rounded-lg shadow transition disabled:opacity-50 flex items-center gap-2">
-                            <svg x-show="isMigrating" class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
-                            <span x-text="isMigrating ? 'Memigrasikan...' : 'Migrasikan ke Firestore'"></span>
-                        </button>
-                    </div>
-                </div>
-            </div>
-            
             <!-- VIEW: DASHBOARD RESUME (NEW) -->
             <div x-show="activeMenu === 'dashboard'" x-cloak>
                 <div class="max-w-7xl mx-auto space-y-6">
@@ -790,6 +761,33 @@
             return (packed || []).map(r => (r && Array.isArray(r.cells)) ? r.cells : r);
         }
 
+        // Firestore membatasi 1 dokumen maksimal ~1MB. Jika larik baris (rowsField, misalnya
+        // filePreviewData atau details) membuat dokumen jadi terlalu besar, potong sebagian
+        // barisnya secara bertahap agar tetap bisa disimpan. Mengembalikan true jika dipotong.
+        function enforceRowSizeLimit(payload, rowsField) {
+            let wasTrimmed = false;
+            while (JSON.stringify(payload).length > 900000 && Array.isArray(payload[rowsField]) && payload[rowsField].length > 0) {
+                payload[rowsField] = payload[rowsField].slice(0, Math.ceil(payload[rowsField].length / 2));
+                wasTrimmed = true;
+            }
+            return wasTrimmed;
+        }
+
+        // Menerjemahkan error Firestore/Firebase menjadi pesan yang mudah dipahami pengguna
+        function explainFirebaseError(e) {
+            const code = e && e.code ? e.code : '';
+            if (code === 'permission-denied') {
+                return 'Ditolak oleh Security Rules Firestore. Pastikan Anonymous Sign-in aktif dan Security Rules mengizinkan akses (allow read, write: if request.auth != null).';
+            }
+            if (code === 'unavailable' || code === 'deadline-exceeded') {
+                return 'Server Firestore tidak dapat dijangkau. Periksa koneksi internet Anda dan coba lagi.';
+            }
+            if (code === 'invalid-argument' || (e && /longer than|exceeds|invalid data/i.test(e.message || ''))) {
+                return 'Data yang dikirim tidak valid atau melebihi batas ukuran Firestore (1 dokumen maksimal 1MB). Coba unggah file dengan jumlah baris lebih sedikit.';
+            }
+            return (e && e.message) ? e.message : 'Kesalahan tidak diketahui.';
+        }
+
         function dashboardApp() {
             let myChartKlinik = null; // Variabel chart disimpan di luar state reaktif Alpine.js
             let myChartAmbulance = null;
@@ -812,9 +810,6 @@
                 editIndex: null,
                 selectedItem: null,
                 selectedClaim: null,
-                showMigrationBanner: false,
-                isMigrating: false,
-                migrationInfo: { layananCount: 0, klaimCount: 0 },
                 monthsList: ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'],
                 
                 form: {
@@ -853,18 +848,6 @@
 
                         const draftClaim = await localforage.getItem('draft_claim');
                         if (draftClaim) this.claimForm = draftClaim;
-
-                        // Deteksi data dari versi lokal (localforage) sebelumnya di perangkat ini
-                        const alreadyMigrated = await localforage.getItem('migration_completed');
-                        const oldLayanan = await localforage.getItem('dashboard_layanan_data');
-                        const oldKlaim = await localforage.getItem('dashboard_claims_data');
-                        if (!alreadyMigrated && ((oldLayanan && oldLayanan.length) || (oldKlaim && oldKlaim.length))) {
-                            this.migrationInfo = {
-                                layananCount: oldLayanan ? oldLayanan.length : 0,
-                                klaimCount: oldKlaim ? oldKlaim.length : 0
-                            };
-                            this.showMigrationBanner = true;
-                        }
                     } catch (e) {
                         console.error("Gagal memuat draft lokal:", e);
                     }
@@ -930,144 +913,6 @@
                     if(this.activeMenu === 'dashboard') {
                         setTimeout(() => this.initChart(), 300);
                     }
-                },
-
-                async migrateLocalData() {
-                    if (!confirm(`Migrasikan ${this.migrationInfo.layananCount} data layanan dan ${this.migrationInfo.klaimCount} data klaim dari penyimpanan lokal perangkat ini ke Firestore (Realtime)?\n\nProses ini hanya perlu dilakukan SATU KALI.`)) return;
-
-                    this.isMigrating = true;
-                    try {
-                        const oldLayanan = (await localforage.getItem('dashboard_layanan_data')) || [];
-                        const oldKlaim = (await localforage.getItem('dashboard_claims_data')) || [];
-
-                        const skipped = await this.pushBatchToFirestore(oldLayanan, oldKlaim);
-
-                        await localforage.setItem('migration_completed', true);
-                        this.showMigrationBanner = false;
-
-                        setTimeout(() => {
-                            let msg = `Migrasi berhasil! ${oldLayanan.length} data layanan dan ${oldKlaim.length} data klaim telah dipindahkan ke Firestore dan kini tersinkron realtime ke semua perangkat.`;
-                            if (skipped.length > 0) {
-                                msg += `\n\nCatatan: ${skipped.length} data ukurannya terlalu besar sehingga sebagian baris detail/preview-nya dipotong otomatis (data utama tetap tersimpan). Cek Console (F12) untuk detail.`;
-                            }
-                            alert(msg);
-                        }, 100);
-                    } catch (e) {
-                        console.error('Gagal migrasi data:', e);
-                        alert('Gagal memigrasikan data ke Firestore. Periksa console (F12) untuk detail error, lalu coba lagi.');
-                    } finally {
-                        this.isMigrating = false;
-                    }
-                },
-
-                async dismissMigrationBanner() {
-                    if (!confirm('Lewati migrasi? Data lokal lama tidak akan dipindahkan ke Firestore (namun tetap tersimpan di perangkat ini, bisa dimigrasikan lagi nanti).')) return;
-                    this.showMigrationBanner = false;
-                },
-
-                // Dipanggil dari input file tersembunyi saat tombol "Import dari JSON" diklik
-                triggerImportFile() {
-                    this.$refs.importFileInput.click();
-                },
-
-                async importFromJSON(event) {
-                    const file = event.target.files[0];
-                    if (!file) return;
-
-                    try {
-                        const text = await file.text();
-                        const parsed = JSON.parse(text);
-
-                        const layananArr = Array.isArray(parsed.layanan) ? parsed.layanan : [];
-                        const klaimArr = Array.isArray(parsed.klaim) ? parsed.klaim : [];
-
-                        if (layananArr.length === 0 && klaimArr.length === 0) {
-                            alert('File JSON tidak berisi data layanan maupun klaim yang valid. Pastikan ini adalah file backup yang benar (hasil dari tombol "Export Backup JSON").');
-                            return;
-                        }
-
-                        if (!confirm(`File backup berisi ${layananArr.length} data layanan dan ${klaimArr.length} data klaim.\n\nImpor semua data ini ke Firestore sekarang?`)) return;
-
-                        this.isMigrating = true;
-                        const skipped = await this.pushBatchToFirestore(layananArr, klaimArr);
-
-                        setTimeout(() => {
-                            let msg = `Import berhasil! ${layananArr.length} data layanan dan ${klaimArr.length} data klaim telah masuk ke Firestore dan kini tersinkron realtime ke semua perangkat.`;
-                            if (skipped.length > 0) {
-                                msg += `\n\nCatatan: ${skipped.length} data ukurannya terlalu besar sehingga sebagian baris detail/preview-nya dipotong otomatis (data utama tetap tersimpan). Cek Console (F12) untuk detail.`;
-                            }
-                            alert(msg);
-                        }, 100);
-                    } catch (e) {
-                        console.error('Gagal mengimpor file JSON:', e);
-                        alert('Gagal membaca/mengimpor file. Pastikan file adalah backup JSON yang valid, lalu coba lagi.');
-                    } finally {
-                        this.isMigrating = false;
-                        event.target.value = ''; // reset input agar bisa pilih file yang sama lagi jika perlu
-                    }
-                },
-
-                // Helper bersama: menulis larik data layanan & klaim ke Firestore lewat batch,
-                // dipakai baik oleh migrasi dari localforage maupun import dari file JSON
-                async pushBatchToFirestore(layananArr, klaimArr) {
-                    // Gunakan timestamp buatan yang urut naik agar urutan data asli
-                    // (sesuai kronologi input) tetap terjaga setelah masuk ke Firestore
-                    const baseTime = Date.now() - (layananArr.length + klaimArr.length) * 1000;
-                    let counter = 0;
-                    const skipped = [];
-
-                    // Satukan semua operasi dulu, baru dipecah jadi kelompok kecil untuk dikirim
-                    const operations = [];
-
-                    layananArr.forEach((item) => {
-                        const payload = { ...item };
-                        delete payload.id;
-                        delete payload.saldo; // saldo dihitung ulang otomatis oleh aplikasi
-                        payload.filePreviewData = packRows(payload.filePreviewData);
-                        payload.createdAt = firebase.firestore.Timestamp.fromMillis(baseTime + (counter++) * 1000);
-
-                        // Firestore membatasi 1 dokumen maksimal ~1MB. Jika data Excel bulan ini
-                        // terlalu besar, potong jumlah barisnya agar tetap bisa disimpan.
-                        while (JSON.stringify(payload).length > 900000 && payload.filePreviewData.length > 0) {
-                            payload.filePreviewData = payload.filePreviewData.slice(0, Math.ceil(payload.filePreviewData.length / 2));
-                            skipped.push(`${payload.program || ''} - ${payload.bulan || ''} (baris preview dipotong karena terlalu besar)`);
-                        }
-
-                        operations.push({ collection: LAYANAN_COLLECTION, payload });
-                    });
-
-                    klaimArr.forEach((claim) => {
-                        const payload = { ...claim };
-                        delete payload.id;
-                        delete payload.selected;
-                        payload.details = packRows(payload.details);
-                        payload.createdAt = firebase.firestore.Timestamp.fromMillis(baseTime + (counter++) * 1000);
-
-                        while (JSON.stringify(payload).length > 900000 && payload.details.length > 0) {
-                            payload.details = payload.details.slice(0, Math.ceil(payload.details.length / 2));
-                            skipped.push(`Klaim ${payload.donatur || ''} - ${payload.bulan || ''} (detail dipotong karena terlalu besar)`);
-                        }
-
-                        operations.push({ collection: KLAIM_COLLECTION, payload });
-                    });
-
-                    // Firestore membatasi ukuran total 1 batch (~10MB) dan maksimal 500 operasi.
-                    // Kirim secara bertahap dalam kelompok kecil, bukan sekaligus, agar tidak melebihi limit.
-                    const CHUNK_SIZE = 8;
-                    for (let i = 0; i < operations.length; i += CHUNK_SIZE) {
-                        const chunk = operations.slice(i, i + CHUNK_SIZE);
-                        const batch = db.batch();
-                        chunk.forEach(op => {
-                            const ref = db.collection(op.collection).doc();
-                            batch.set(ref, op.payload);
-                        });
-                        await batch.commit();
-                    }
-
-                    if (skipped.length > 0) {
-                        console.warn('Beberapa data terlalu besar dan sebagian baris preview-nya dipotong:', skipped);
-                    }
-                    return skipped;
                 },
 
                 // Filter Data Untuk Menu Laporan
@@ -1345,6 +1190,7 @@
                     };
                     delete finalData.id; // id & saldo dikelola otomatis, tidak ditulis manual
                     finalData.filePreviewData = packRows(finalData.filePreviewData); // Firestore tidak mendukung array bersarang
+                    const wasTrimmed = enforceRowSizeLimit(finalData, 'filePreviewData');
 
                     try {
                         if (this.editIndex !== null) {
@@ -1359,7 +1205,7 @@
                         }
                     } catch (e) {
                         console.error('Gagal menyimpan ke Firestore:', e);
-                        alert('Gagal menyimpan data ke server. Periksa koneksi internet dan konfigurasi Firebase Anda.');
+                        alert('Gagal menyimpan data ke server.\n\nPenyebab: ' + explainFirebaseError(e));
                         return;
                     }
                     // this.data akan otomatis diperbarui oleh listener realtime (onSnapshot)
@@ -1372,7 +1218,11 @@
                     this.activeMenu = 'laporan';
                     
                     setTimeout(() => {
-                        alert("Data berhasil disimpan dan disinkronkan secara realtime ke semua perangkat!");
+                        let msg = "Data berhasil disimpan dan disinkronkan secara realtime ke semua perangkat!";
+                        if (wasTrimmed) {
+                            msg += "\n\nCatatan: file yang diupload cukup besar, sebagian baris preview-nya dipotong otomatis agar muat di database (data penyerapan & jumlah layanan tetap tersimpan utuh).";
+                        }
+                        alert(msg);
                     }, 100);
                 },
 
@@ -1520,6 +1370,7 @@
                         details: packRows(detailedRows), // Firestore tidak mendukung array bersarang
                         previewHeaders: record.previewHeaders
                     };
+                    const wasTrimmed = enforceRowSizeLimit(newClaim, 'details');
 
                     const prevProgram = record.program;
 
@@ -1530,7 +1381,7 @@
                         });
                     } catch (e) {
                         console.error('Gagal menyimpan klaim ke Firestore:', e);
-                        alert('Gagal menyimpan klaim ke server. Periksa koneksi internet Anda.');
+                        alert('Gagal menyimpan klaim ke server.\n\nPenyebab: ' + explainFirebaseError(e));
                         return;
                     }
                     // this.claims akan otomatis diperbarui oleh listener realtime (onSnapshot)
@@ -1542,7 +1393,11 @@
                     this.activeMenu = 'claims';
 
                     setTimeout(() => {
-                        alert(`Klaim Berhasil! Menarik ${detailedRows.length} data layanan dari master data ${prevProgram}. Data tersinkron realtime ke semua perangkat.`);
+                        let msg = `Klaim Berhasil! Menarik ${detailedRows.length} data layanan dari master data ${prevProgram}. Data tersinkron realtime ke semua perangkat.`;
+                        if (wasTrimmed) {
+                            msg += "\n\nCatatan: detail klaim cukup besar, sebagian barisnya dipotong otomatis agar muat di database (jumlah hasil layanan tetap tersimpan utuh).";
+                        }
+                        alert(msg);
                     }, 100);
                 },
 
