@@ -36,7 +36,7 @@
         <aside class="w-full md:w-64 bg-indigo-900 text-white flex flex-col shadow-xl z-20">
             <div class="p-6">
                 <h2 class="text-xl font-bold tracking-tight flex items-center gap-2">
-                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2-2v6a2 2 0 002h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2-2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
                     Claim System
                 </h2>
                 <div class="mt-4">
@@ -940,13 +940,17 @@
                         const oldLayanan = (await localforage.getItem('dashboard_layanan_data')) || [];
                         const oldKlaim = (await localforage.getItem('dashboard_claims_data')) || [];
 
-                        await this.pushBatchToFirestore(oldLayanan, oldKlaim);
+                        const skipped = await this.pushBatchToFirestore(oldLayanan, oldKlaim);
 
                         await localforage.setItem('migration_completed', true);
                         this.showMigrationBanner = false;
 
                         setTimeout(() => {
-                            alert(`Migrasi berhasil! ${oldLayanan.length} data layanan dan ${oldKlaim.length} data klaim telah dipindahkan ke Firestore dan kini tersinkron realtime ke semua perangkat.`);
+                            let msg = `Migrasi berhasil! ${oldLayanan.length} data layanan dan ${oldKlaim.length} data klaim telah dipindahkan ke Firestore dan kini tersinkron realtime ke semua perangkat.`;
+                            if (skipped.length > 0) {
+                                msg += `\n\nCatatan: ${skipped.length} data ukurannya terlalu besar sehingga sebagian baris detail/preview-nya dipotong otomatis (data utama tetap tersimpan). Cek Console (F12) untuk detail.`;
+                            }
+                            alert(msg);
                         }, 100);
                     } catch (e) {
                         console.error('Gagal migrasi data:', e);
@@ -985,10 +989,14 @@
                         if (!confirm(`File backup berisi ${layananArr.length} data layanan dan ${klaimArr.length} data klaim.\n\nImpor semua data ini ke Firestore sekarang?`)) return;
 
                         this.isMigrating = true;
-                        await this.pushBatchToFirestore(layananArr, klaimArr);
+                        const skipped = await this.pushBatchToFirestore(layananArr, klaimArr);
 
                         setTimeout(() => {
-                            alert(`Import berhasil! ${layananArr.length} data layanan dan ${klaimArr.length} data klaim telah masuk ke Firestore dan kini tersinkron realtime ke semua perangkat.`);
+                            let msg = `Import berhasil! ${layananArr.length} data layanan dan ${klaimArr.length} data klaim telah masuk ke Firestore dan kini tersinkron realtime ke semua perangkat.`;
+                            if (skipped.length > 0) {
+                                msg += `\n\nCatatan: ${skipped.length} data ukurannya terlalu besar sehingga sebagian baris detail/preview-nya dipotong otomatis (data utama tetap tersimpan). Cek Console (F12) untuk detail.`;
+                            }
+                            alert(msg);
                         }, 100);
                     } catch (e) {
                         console.error('Gagal mengimpor file JSON:', e);
@@ -1005,30 +1013,61 @@
                     // Gunakan timestamp buatan yang urut naik agar urutan data asli
                     // (sesuai kronologi input) tetap terjaga setelah masuk ke Firestore
                     const baseTime = Date.now() - (layananArr.length + klaimArr.length) * 1000;
+                    let counter = 0;
+                    const skipped = [];
 
-                    const batch = db.batch();
+                    // Satukan semua operasi dulu, baru dipecah jadi kelompok kecil untuk dikirim
+                    const operations = [];
 
-                    layananArr.forEach((item, i) => {
-                        const ref = db.collection(LAYANAN_COLLECTION).doc();
+                    layananArr.forEach((item) => {
                         const payload = { ...item };
                         delete payload.id;
                         delete payload.saldo; // saldo dihitung ulang otomatis oleh aplikasi
                         payload.filePreviewData = packRows(payload.filePreviewData);
-                        payload.createdAt = firebase.firestore.Timestamp.fromMillis(baseTime + i * 1000);
-                        batch.set(ref, payload);
+                        payload.createdAt = firebase.firestore.Timestamp.fromMillis(baseTime + (counter++) * 1000);
+
+                        // Firestore membatasi 1 dokumen maksimal ~1MB. Jika data Excel bulan ini
+                        // terlalu besar, potong jumlah barisnya agar tetap bisa disimpan.
+                        while (JSON.stringify(payload).length > 900000 && payload.filePreviewData.length > 0) {
+                            payload.filePreviewData = payload.filePreviewData.slice(0, Math.ceil(payload.filePreviewData.length / 2));
+                            skipped.push(`${payload.program || ''} - ${payload.bulan || ''} (baris preview dipotong karena terlalu besar)`);
+                        }
+
+                        operations.push({ collection: LAYANAN_COLLECTION, payload });
                     });
 
-                    klaimArr.forEach((claim, i) => {
-                        const ref = db.collection(KLAIM_COLLECTION).doc();
+                    klaimArr.forEach((claim) => {
                         const payload = { ...claim };
                         delete payload.id;
                         delete payload.selected;
                         payload.details = packRows(payload.details);
-                        payload.createdAt = firebase.firestore.Timestamp.fromMillis(baseTime + i * 1000);
-                        batch.set(ref, payload);
+                        payload.createdAt = firebase.firestore.Timestamp.fromMillis(baseTime + (counter++) * 1000);
+
+                        while (JSON.stringify(payload).length > 900000 && payload.details.length > 0) {
+                            payload.details = payload.details.slice(0, Math.ceil(payload.details.length / 2));
+                            skipped.push(`Klaim ${payload.donatur || ''} - ${payload.bulan || ''} (detail dipotong karena terlalu besar)`);
+                        }
+
+                        operations.push({ collection: KLAIM_COLLECTION, payload });
                     });
 
-                    await batch.commit();
+                    // Firestore membatasi ukuran total 1 batch (~10MB) dan maksimal 500 operasi.
+                    // Kirim secara bertahap dalam kelompok kecil, bukan sekaligus, agar tidak melebihi limit.
+                    const CHUNK_SIZE = 8;
+                    for (let i = 0; i < operations.length; i += CHUNK_SIZE) {
+                        const chunk = operations.slice(i, i + CHUNK_SIZE);
+                        const batch = db.batch();
+                        chunk.forEach(op => {
+                            const ref = db.collection(op.collection).doc();
+                            batch.set(ref, op.payload);
+                        });
+                        await batch.commit();
+                    }
+
+                    if (skipped.length > 0) {
+                        console.warn('Beberapa data terlalu besar dan sebagian baris preview-nya dipotong:', skipped);
+                    }
+                    return skipped;
                 },
 
                 // Filter Data Untuk Menu Laporan
