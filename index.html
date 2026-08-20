@@ -3,15 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard Monitoring Layanan & Perhitungan Claim</title>
+    <title>Dashboard Monitoring Layanan &amp; Perhitungan Claim</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Tambahkan pustaka SheetJS untuk membaca file Excel -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <!-- Tambahkan pustaka LocalForage untuk penyimpanan lokal berkapasitas besar (IndexedDB) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
-    <!-- Tambahkan Chart.js untuk visualisasi grafik -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- Firebase (Firestore) untuk sinkronisasi data realtime lintas perangkat -->
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -27,6 +23,9 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        @media (prefers-reduced-motion: reduce) {
+            .loader { animation: none; }
+        }
     </style>
 </head>
 <body class="bg-gray-50 text-gray-900" x-data="dashboardApp" x-init="initData()">
@@ -39,11 +38,16 @@
                     <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2-2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
                     Claim System
                 </h2>
-                <div class="mt-4">
+                <div class="mt-4 space-y-2">
                     <div class="flex items-center gap-2 text-[10px] font-bold bg-slate-800 p-2 rounded-lg shadow-inner border border-slate-700"
                          :class="isOnline ? 'text-emerald-300' : 'text-amber-300 animate-pulse'">
                         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
                         <span x-text="connectionStatus"></span>
+                    </div>
+                    <div class="flex items-center gap-2 text-[10px] font-bold bg-slate-800 p-2 rounded-lg shadow-inner border border-slate-700"
+                         :class="sheetError ? 'text-red-300' : 'text-sky-300'">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                        <span x-text="sheetStatus"></span>
                     </div>
                 </div>
             </div>
@@ -61,24 +65,27 @@
                     Perhitungan Claim
                 </button>
             </nav>
-            <div class="p-6 border-t border-indigo-800 text-[10px] text-indigo-300">
-                &copy; 2024 System Monitoring Layanan
+            <div class="p-4 border-t border-indigo-800">
+                <button @click="syncSpreadsheet()" :disabled="isSyncing" class="w-full flex items-center justify-center gap-2 bg-indigo-700 hover:bg-indigo-600 disabled:opacity-50 text-white text-xs font-bold px-3 py-2.5 rounded-lg transition-all">
+                    <div x-show="isSyncing" class="loader ease-linear rounded-full border-2 border-t-2 border-white/40 h-3 w-3"></div>
+                    <svg x-show="!isSyncing" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                    <span x-text="isSyncing ? 'Menarik data...' : 'Sinkronkan Spreadsheet'"></span>
+                </button>
+                <p class="text-[10px] text-indigo-300 mt-3 leading-relaxed" x-text="lastSync ? `Terakhir disinkronkan ${lastSync}` : 'Belum pernah disinkronkan'"></p>
             </div>
         </aside>
 
         <!-- Main Content -->
         <main class="flex-grow p-4 md:p-8 overflow-y-auto">
 
-            <!-- VIEW: DASHBOARD RESUME (NEW) -->
+            <!-- VIEW: DASHBOARD RESUME -->
             <div x-show="activeMenu === 'dashboard'" x-cloak>
                 <div class="max-w-7xl mx-auto space-y-6">
-                    <!-- Header -->
                     <div class="mb-8">
                         <h1 class="text-2xl font-bold text-gray-800">Dashboard Resume</h1>
                         <p class="text-gray-500">Ringkasan penyerapan dana dan status klaim layanan.</p>
                     </div>
 
-                    <!-- Filter Area untuk Resume -->
                     <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-4 items-center">
                         <span class="text-xs font-bold text-gray-400 uppercase tracking-widest mr-2">Filter Data:</span>
                         <select x-model="dashFilterProgram" class="w-full md:w-48 bg-gray-50 border border-gray-200 text-gray-800 text-sm rounded-lg focus:ring-indigo-500 p-2.5 outline-none font-medium">
@@ -95,29 +102,31 @@
                     </div>
 
                     <!-- Summary Cards -->
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div class="bg-gradient-to-br from-slate-700 to-slate-900 p-6 rounded-2xl shadow-lg text-white relative overflow-hidden">
+                            <p class="text-xs font-bold text-slate-300 uppercase tracking-widest mb-1">Total Layanan di Spreadsheet</p>
+                            <p class="text-4xl font-black" x-text="`${dashSummary.totalLayanan} Unit`"></p>
+                        </div>
                         <div class="bg-gradient-to-br from-indigo-500 to-indigo-700 p-6 rounded-2xl shadow-lg text-white relative overflow-hidden">
                             <div class="absolute -right-6 -top-6 opacity-20"><svg class="w-32 h-32" fill="currentColor" viewBox="0 0 20 20"><path d="M2 10a8 8 0 018-8v8h8a8 8 0 11-16 0z"></path><path d="M12 2.252A8.014 8.014 0 0117.748 8H12V2.252z"></path></svg></div>
-                            <p class="text-xs font-bold text-indigo-200 uppercase tracking-widest mb-1 relative z-10">Total Sisa Layanan (Belum Terklaim)</p>
+                            <p class="text-xs font-bold text-indigo-200 uppercase tracking-widest mb-1 relative z-10">Sisa Layanan (Belum Terklaim)</p>
                             <p class="text-4xl font-black relative z-10" x-text="`${dashSummary.layanan} Unit`"></p>
                         </div>
                         <div class="bg-gradient-to-br from-emerald-500 to-teal-700 p-6 rounded-2xl shadow-lg text-white relative overflow-hidden">
                             <div class="absolute -right-6 -top-6 opacity-20"><svg class="w-32 h-32" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4 4a2 2 0 00-2 2v4a2 2 0 002 2V6h10a2 2 0 00-2-2H4zm2 6a2 2 0 012-2h8a2 2 0 012 2v4a2 2 0 01-2 2H8a2 2 0 01-2-2v-4zm6 4a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd"></path></svg></div>
-                            <p class="text-xs font-bold text-emerald-200 uppercase tracking-widest mb-1 relative z-10">Total Sisa Saldo Dana</p>
+                            <p class="text-xs font-bold text-emerald-200 uppercase tracking-widest mb-1 relative z-10">Sisa Saldo Dana</p>
                             <p class="text-4xl font-black relative z-10" x-text="formatIDR(dashSummary.saldo)"></p>
                         </div>
                     </div>
 
                     <!-- Mixed Chart Area -->
                     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        <!-- Chart Klinik -->
                         <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100" x-show="dashFilterProgram === 'Semua' || dashFilterProgram === 'Klinik'">
                             <h3 class="text-sm font-bold text-gray-800 mb-6 uppercase tracking-wider">Grafik Klinik: Layanan vs Penyerapan</h3>
                             <div class="relative w-full h-80">
                                 <canvas x-ref="chartCanvasKlinik"></canvas>
                             </div>
                         </div>
-                        <!-- Chart Ambulance -->
                         <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100" x-show="dashFilterProgram === 'Semua' || dashFilterProgram === 'Ambulance'">
                             <h3 class="text-sm font-bold text-gray-800 mb-6 uppercase tracking-wider">Grafik Ambulance: Layanan vs Penyerapan</h3>
                             <div class="relative w-full h-80">
@@ -129,7 +138,7 @@
                     <!-- Detail Sisa Layanan & Saldo per Bulan/Program -->
                     <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                         <div class="p-5 border-b border-gray-50 bg-gray-50/50">
-                            <h3 class="font-bold text-gray-800 text-sm">Rincian Sisa Layanan & Saldo per Kategori</h3>
+                            <h3 class="font-bold text-gray-800 text-sm">Rincian Sisa Layanan &amp; Saldo per Kategori</h3>
                         </div>
                         <div class="overflow-x-auto">
                             <table class="w-full text-sm text-left">
@@ -146,7 +155,7 @@
                                         <tr class="hover:bg-slate-50 transition-colors">
                                             <td class="px-6 py-4 font-bold text-gray-800" x-text="item.bulan"></td>
                                             <td class="px-6 py-4">
-                                                <span :class="item.program === 'Ambulance' ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'" class="px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider" x-text="item.program || 'Klinik'"></span>
+                                                <span :class="item.program === 'Ambulance' ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'" class="px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider" x-text="item.program"></span>
                                             </td>
                                             <td class="px-6 py-4 text-center font-black text-indigo-600" x-text="`${item.sisaLayanan} Unit`"></td>
                                             <td class="px-6 py-4 text-right font-bold text-emerald-600" x-text="formatIDR(item.sisaSaldo)"></td>
@@ -162,48 +171,51 @@
                 </div>
             </div>
 
-            <!-- VIEW: LAPORAN LAYANAN BULANAN -->
+            <!-- VIEW: LAPORAN LAYANAN BULANAN (MIRRORING SPREADSHEET) -->
             <div x-show="activeMenu === 'laporan'" x-cloak>
                 <div class="max-w-7xl mx-auto">
-                    <!-- Header Section -->
                     <div class="mb-8">
                         <h1 class="text-2xl font-bold text-gray-800">Laporan Layanan Bulanan</h1>
-                        <p class="text-gray-500">Unggah master data dan monitoring unit cost per bulan.</p>
+                        <p class="text-gray-500">Jumlah layanan dibaca langsung dari Sheet Klinik &amp; Ambulance. Anda hanya mengisi penyerapan dana per bulan.</p>
+                    </div>
+
+                    <!-- Banner status mirroring -->
+                    <div class="mb-6 p-4 rounded-xl border flex flex-col md:flex-row md:items-center justify-between gap-3"
+                         :class="sheetError ? 'bg-red-50 border-red-200' : 'bg-sky-50 border-sky-100'">
+                        <div class="flex items-start gap-3">
+                            <svg class="w-5 h-5 mt-0.5 flex-shrink-0" :class="sheetError ? 'text-red-500' : 'text-sky-500'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            <div>
+                                <p class="text-sm font-bold" :class="sheetError ? 'text-red-800' : 'text-sky-900'" x-text="sheetError ? 'Data spreadsheet gagal dimuat' : 'Data cermin dari Google Spreadsheet'"></p>
+                                <p class="text-xs mt-0.5" :class="sheetError ? 'text-red-600' : 'text-sky-700'" x-text="sheetError ? sheetError : mirrorInfoText"></p>
+                            </div>
+                        </div>
+                        <button @click="syncSpreadsheet()" :disabled="isSyncing" class="flex items-center justify-center gap-2 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap">
+                            <div x-show="isSyncing" class="loader ease-linear rounded-full border-2 border-t-2 border-white/40 h-3 w-3"></div>
+                            <span x-text="isSyncing ? 'Menarik data...' : 'Tarik ulang data'"></span>
+                        </button>
                     </div>
 
                     <!-- Toolbar Section -->
                     <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-6">
                         <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                            <div class="flex items-center gap-2">
-                                <button @click="openAddModal()" class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg transition-all text-sm font-medium">
-                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-                                    </svg>
-                                    Upload Data Layanan
-                                </button>
-                                <button @click="exportExcel()" class="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg transition-all text-sm font-medium">
-                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                                    </svg>
-                                    Export Excel
-                                </button>
-                            </div>
+                            <button @click="exportRekapBulanan()" class="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg transition-all text-sm font-medium">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                </svg>
+                                Export Rekap Bulanan
+                            </button>
                             <div class="flex flex-col md:flex-row items-center gap-3">
-                                <div class="relative w-full md:w-40">
-                                    <select x-model="filterProgram" class="w-full bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2.5">
-                                        <option value="Semua">Semua Program</option>
-                                        <option value="Klinik">Klinik</option>
-                                        <option value="Ambulance">Ambulance</option>
-                                    </select>
-                                </div>
-                                <div class="relative w-full md:w-40">
-                                    <select x-model="filterBulan" class="w-full bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2.5">
-                                        <option value="Semua">Semua Bulan</option>
-                                        <template x-for="m in monthsList" :key="m">
-                                            <option :value="m" x-text="m"></option>
-                                        </template>
-                                    </select>
-                                </div>
+                                <select x-model="filterProgram" class="w-full md:w-40 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2.5">
+                                    <option value="Semua">Semua Program</option>
+                                    <option value="Klinik">Klinik</option>
+                                    <option value="Ambulance">Ambulance</option>
+                                </select>
+                                <select x-model="filterBulan" class="w-full md:w-40 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2.5">
+                                    <option value="Semua">Semua Bulan</option>
+                                    <template x-for="m in monthsList" :key="m">
+                                        <option :value="m" x-text="m"></option>
+                                    </template>
+                                </select>
                                 <div class="relative w-full md:w-64">
                                     <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
                                         <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -220,7 +232,7 @@
                     <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                         <div class="p-6 border-b border-gray-50 flex justify-between items-center bg-gray-50/50">
                             <div>
-                                <h3 class="font-bold text-gray-800 text-lg">Log Master & Data Cost Per Unit</h3>
+                                <h3 class="font-bold text-gray-800 text-lg">Log Master &amp; Data Cost Per Unit</h3>
                                 <p class="text-[10px] font-bold text-gray-400 mt-1 uppercase tracking-widest">Acuan Pemotongan Klaim</p>
                             </div>
                             <span class="text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-lg" x-text="`${filteredData.length} Entri`"></span>
@@ -232,45 +244,45 @@
                                         <th class="px-6 py-4">No</th>
                                         <th class="px-6 py-4">Program</th>
                                         <th class="px-6 py-4">Bulan</th>
-                                        <th class="px-6 py-4">Tab Sheet</th>
                                         <th class="px-6 py-4 text-center">Layanan</th>
                                         <th class="px-6 py-4">Penyerapan</th>
                                         <th class="px-6 py-4">Unit / Cost</th>
+                                        <th class="px-6 py-4 text-center">Terklaim</th>
                                         <th class="px-6 py-4">Saldo</th>
                                         <th class="px-6 py-4 text-center">Aksi</th>
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-gray-50">
-                                    <template x-for="(item, index) in filteredData" :key="index">
+                                    <template x-for="(item, index) in filteredData" :key="item.id">
                                         <tr class="hover:bg-indigo-50/30 transition-colors">
                                             <td class="px-6 py-4 text-gray-400 font-medium" x-text="index + 1"></td>
                                             <td class="px-6 py-4">
-                                                <span :class="item.program === 'Ambulance' ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'" class="px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider" x-text="item.program || 'Klinik'"></span>
+                                                <span :class="item.program === 'Ambulance' ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'" class="px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider" x-text="item.program"></span>
                                             </td>
                                             <td class="px-6 py-4 font-bold text-gray-800" x-text="item.bulan"></td>
-                                            <td class="px-6 py-4 text-gray-500 font-mono text-xs" x-text="item.sheetTab || '-'"></td>
                                             <td class="px-6 py-4 text-center font-semibold text-gray-600" x-text="item.jumlahLayanan"></td>
-                                            <td class="px-6 py-4 font-semibold text-gray-700" x-text="formatIDR(item.penyerapan)"></td>
                                             <td class="px-6 py-4">
-                                                <span class="bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded text-xs font-bold" x-text="formatIDR(item.jumlahLayanan > 0 ? (item.penyerapan / item.jumlahLayanan) : 0)"></span>
+                                                <span x-show="item.penyerapan > 0" class="font-semibold text-gray-700" x-text="formatIDR(item.penyerapan)"></span>
+                                                <button x-show="!item.penyerapan" @click="openPenyerapanModal(item)" class="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg hover:bg-amber-100 transition-all">Isi penyerapan</button>
                                             </td>
-                                            <td class="px-6 py-4 text-slate-700 font-medium" x-text="formatIDR(item.penyerapan - getClaimedNominal(item.bulan, item.program))"></td>
+                                            <td class="px-6 py-4">
+                                                <span class="bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded text-xs font-bold" x-text="formatIDR(item.unitCost)"></span>
+                                            </td>
+                                            <td class="px-6 py-4 text-center">
+                                                <span class="text-xs font-bold text-amber-600" x-text="`${item.layananTerklaim} / ${item.jumlahLayanan}`"></span>
+                                            </td>
+                                            <td class="px-6 py-4 text-slate-700 font-medium" x-text="formatIDR(item.sisaSaldo)"></td>
                                             <td class="px-6 py-4 text-center">
                                                 <div class="flex items-center justify-center gap-2">
-                                                    <button @click="viewDetails(item)" class="p-1.5 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Lihat Detail File">
+                                                    <button @click="viewDetails(item)" class="p-1.5 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Lihat data layanan bulan ini">
                                                         <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                                                         </svg>
                                                     </button>
-                                                    <button @click="editRow(item)" class="p-1.5 text-amber-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all" title="Edit Data">
+                                                    <button @click="openPenyerapanModal(item)" class="p-1.5 text-amber-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all" title="Ubah penyerapan dana">
                                                         <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                                        </svg>
-                                                    </button>
-                                                    <button @click="deleteRow(index)" class="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all" title="Hapus Data">
-                                                        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                                         </svg>
                                                     </button>
                                                 </div>
@@ -278,7 +290,7 @@
                                         </tr>
                                     </template>
                                     <template x-if="filteredData.length === 0">
-                                        <tr><td colspan="8" class="px-6 py-16 text-center text-gray-400 italic">Belum ada data utama yang diunggah.</td></tr>
+                                        <tr><td colspan="9" class="px-6 py-16 text-center text-gray-400 italic" x-text="isSyncing ? 'Menarik data dari spreadsheet...' : 'Belum ada bulan yang terbaca. Klik Sinkronkan Spreadsheet.'"></td></tr>
                                     </template>
                                 </tbody>
                             </table>
@@ -316,7 +328,7 @@
                                             <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Bulan Ref</label>
                                             <select x-model="claimForm.bulan" required class="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-medium">
                                                 <option value="">-- Bulan --</option>
-                                                <template x-for="m in monthsList" :key="m">
+                                                <template x-for="m in availableMonths(claimForm.program)" :key="m">
                                                     <option :value="m" x-text="m"></option>
                                                 </template>
                                             </select>
@@ -328,8 +340,14 @@
                                     </div>
                                     <div>
                                         <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Lokasi</label>
-                                        <input type="text" x-model="claimForm.lokasi" required placeholder="Nasional atau Cabang spesifik" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 focus:ring-2 focus:ring-indigo-500 outline-none font-medium">
-                                        <p class="text-[10px] text-gray-400 mt-1 italic">* Ketik "Nasional" untuk penarikan rasio proporsional.</p>
+                                        <input type="text" x-model="claimForm.lokasi" required list="daftarLokasi" placeholder="Nasional atau cabang spesifik" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 focus:ring-2 focus:ring-indigo-500 outline-none font-medium">
+                                        <datalist id="daftarLokasi">
+                                            <option value="Nasional"></option>
+                                            <template x-for="c in availableBranches(claimForm.program, claimForm.bulan)" :key="c">
+                                                <option :value="c"></option>
+                                            </template>
+                                        </datalist>
+                                        <p class="text-[10px] text-gray-400 mt-1 italic">Ketik "Nasional" untuk penarikan rasio proporsional seluruh cabang.</p>
                                     </div>
                                     <div>
                                         <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Sumber Dana</label>
@@ -341,17 +359,28 @@
                                     </div>
 
                                     <!-- Auto Result Area -->
-                                    <div class="pt-4 border-t border-gray-50">
-                                        <div class="bg-indigo-50 p-4 rounded-xl">
-                                            <div class="flex justify-between items-center mb-1">
+                                    <div class="pt-4 border-t border-gray-50 space-y-3">
+                                        <div class="bg-indigo-50 p-4 rounded-xl space-y-1">
+                                            <div class="flex justify-between items-center">
                                                 <span class="text-[10px] font-bold text-indigo-400 uppercase">Unit Cost Bulan Ini</span>
                                                 <span class="text-xs font-bold text-indigo-600" x-text="formatIDR(getUnitCost(claimForm.bulan, claimForm.program))"></span>
                                             </div>
                                             <div class="flex justify-between items-center">
-                                                <span class="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Layanan Terklaim</span>
-                                                <span class="text-lg font-black text-indigo-900" x-text="`${calculateClaimedUnits()} Unit` "></span>
+                                                <span class="text-[10px] font-bold text-indigo-400 uppercase">Sisa Layanan</span>
+                                                <span class="text-xs font-bold text-indigo-600" x-text="`${sisaLayananKlaim} Unit`"></span>
+                                            </div>
+                                            <div class="flex justify-between items-center">
+                                                <span class="text-[10px] font-bold text-indigo-400 uppercase">Sisa Saldo</span>
+                                                <span class="text-xs font-bold text-indigo-600" x-text="formatIDR(sisaSaldoKlaim)"></span>
+                                            </div>
+                                            <div class="flex justify-between items-center pt-2 border-t border-indigo-100">
+                                                <span class="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Layanan Ditarik</span>
+                                                <span class="text-lg font-black text-indigo-900" x-text="`${calculateClaimedUnits()} Unit`"></span>
                                             </div>
                                         </div>
+                                        <p x-show="claimForm.bulan && getUnitCost(claimForm.bulan, claimForm.program) === 0" class="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                                            Penyerapan dana bulan ini belum diisi. Buka Laporan Bulanan dan isi dulu penyerapannya.
+                                        </p>
                                     </div>
 
                                     <button type="submit" :disabled="isCalculatingClaim" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl shadow-lg shadow-indigo-100 transition-all flex items-center justify-center gap-2 disabled:opacity-50">
@@ -377,7 +406,7 @@
                                                 <th class="px-4 py-4 w-12 text-center">
                                                     <input type="checkbox" @change="toggleAllClaims($event)" class="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300 cursor-pointer">
                                                 </th>
-                                                <th class="px-6 py-4">Bulan & Program</th>
+                                                <th class="px-6 py-4">Bulan &amp; Program</th>
                                                 <th class="px-6 py-4">Donatur / Lokasi</th>
                                                 <th class="px-6 py-4">Sumber</th>
                                                 <th class="px-6 py-4 text-right">Nominal</th>
@@ -386,7 +415,7 @@
                                             </tr>
                                         </thead>
                                         <tbody class="divide-y divide-gray-100">
-                                            <template x-for="(claim, idx) in claims" :key="idx">
+                                            <template x-for="(claim, idx) in claims" :key="claim.id">
                                                 <tr class="hover:bg-gray-50 transition-colors">
                                                     <td class="px-4 py-4 text-center">
                                                         <input type="checkbox" x-model="claim.selected" class="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300 cursor-pointer">
@@ -408,11 +437,11 @@
                                                     </td>
                                                     <td class="px-6 py-4 text-center">
                                                         <div class="flex items-center justify-center gap-2">
-                                                            <button @click="viewClaimDetails(claim)" class="text-indigo-400 hover:text-indigo-600" title="Lihat Data Layanan Terpilih">
+                                                            <button @click="viewClaimDetails(claim)" class="text-indigo-400 hover:text-indigo-600" title="Lihat data layanan terpilih">
                                                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                                                             </button>
-                                                            <button @click="deleteClaim(idx)" class="text-red-400 hover:text-red-600" title="Hapus Klaim">
+                                                            <button @click="deleteClaim(idx)" class="text-red-400 hover:text-red-600" title="Hapus klaim">
                                                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                                                             </button>
                                                         </div>
@@ -435,141 +464,69 @@
         </main>
     </div>
 
-    <!-- Form Add Data Modal -->
-    <div x-show="showAddModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" x-transition x-cloak>
-        <div class="bg-white rounded-2xl max-w-5xl w-full max-h-[90vh] flex flex-col shadow-2xl" @click.away="showAddModal = false">
-            <!-- Modal Header -->
+    <!-- Modal Penyerapan Dana -->
+    <div x-show="showPenyerapanModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" x-transition x-cloak>
+        <div class="bg-white rounded-2xl max-w-lg w-full shadow-2xl" @click.away="showPenyerapanModal = false">
             <div class="p-6 border-b border-gray-100 flex justify-between items-center">
-                <h3 class="text-xl font-bold text-gray-800" x-text="editIndex !== null ? 'Form Edit Laporan Layanan' : 'Form Laporan Layanan Bulanan'"></h3>
-                <button @click="showAddModal = false" class="text-gray-400 hover:text-gray-600">
+                <div>
+                    <h3 class="text-xl font-bold text-gray-800">Penyerapan Dana</h3>
+                    <p class="text-xs text-gray-500 mt-1" x-text="`${penyerapanForm.program} — ${penyerapanForm.bulan}`"></p>
+                </div>
+                <button @click="showPenyerapanModal = false" class="text-gray-400 hover:text-gray-600">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                 </button>
             </div>
-            <div class="overflow-y-auto p-6 space-y-6">
-                <!-- Row 1: Sumber Data & Basic Info -->
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <!-- Sumber Data Spreadsheet -->
-                    <div class="flex flex-col md:col-span-1">
-                        <label class="block text-sm font-semibold text-gray-700 mb-2">Nama Tab di Google Spreadsheet</label>
-                        <div class="flex-grow border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center p-6 bg-gray-50 gap-3">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2a4 4 0 014-4h4m0 0l-3-3m3 3l-3 3M3 12a9 9 0 1018 0 9 9 0 00-18 0z" />
-                            </svg>
-                            <input type="text" x-model="form.sheetTab" placeholder="Contoh: Klinik_Januari" class="w-full bg-white border border-gray-300 rounded-lg p-2 text-sm text-center focus:ring-2 focus:ring-indigo-500 outline-none">
-                            <button @click="cekDataSheet()" :disabled="isReadingFile || !form.sheetTab" class="w-full text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 px-3 py-2 rounded-lg shadow transition flex items-center justify-center gap-2">
-                                <div x-show="isReadingFile" class="loader ease-linear rounded-full border-2 border-t-2 border-white/40 h-3 w-3"></div>
-                                <span x-text="isReadingFile ? 'Mengambil...' : 'Ambil & Cek Data'"></span>
-                            </button>
-                            <p class="text-[10px] text-gray-400 text-center">Pastikan data sudah ditempel di tab tersebut pada Spreadsheet</p>
-                        </div>
+            <div class="p-6 space-y-5">
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="bg-gray-50 border border-gray-100 rounded-xl p-4">
+                        <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Layanan di Spreadsheet</p>
+                        <p class="text-2xl font-black text-gray-800" x-text="`${penyerapanForm.jumlahLayanan} Unit`"></p>
                     </div>
-
-                    <!-- Input Fields -->
-                    <div class="md:col-span-2 space-y-4">
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div>
-                                <label class="block text-sm font-semibold text-gray-700 mb-2">Program Layanan</label>
-                                <select x-model="form.program" class="w-full bg-gray-50 border border-gray-300 rounded-xl p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none font-medium">
-                                    <option value="Klinik">Klinik</option>
-                                    <option value="Ambulance">Ambulance</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label class="block text-sm font-semibold text-gray-700 mb-2">Pilih Bulan</label>
-                                <select x-model="form.bulan" class="w-full bg-gray-50 border border-gray-300 rounded-xl p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none">
-                                    <option value="">-- Pilih Bulan --</option>
-                                    <template x-for="m in monthsList" :key="m">
-                                        <option :value="m" x-text="m"></option>
-                                    </template>
-                                </select>
-                            </div>
-                            <div>
-                                <label class="block text-sm font-semibold text-gray-700 mb-2">Penyerapan Dana (Rp)</label>
-                                <input type="number" x-model="form.penyerapan" placeholder="Contoh: 50000000" class="w-full bg-gray-50 border border-gray-300 rounded-xl p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none">
-                            </div>
-                        </div>
-                        
-                        <div class="p-4 bg-indigo-50 border border-indigo-100 rounded-xl">
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <span class="text-xs font-bold text-indigo-400 uppercase tracking-wider">Hasil Baca Spreadsheet</span>
-                                    <div class="flex items-center gap-2">
-                                        <h4 class="text-xl font-bold text-indigo-900" x-text="form.jumlahLayanan !== null ? `${form.jumlahLayanan} Layanan` : 'Menunggu data...'"></h4>
-                                        <template x-if="form.jumlahLayanan !== null">
-                                            <span class="text-[10px] bg-indigo-200 text-indigo-700 px-1.5 py-0.5 rounded font-bold uppercase">Total Baris Ditemukan</span>
-                                        </template>
-                                    </div>
-                                </div>
-                                <div x-show="form.jumlahLayanan !== null" class="p-2 bg-indigo-100 rounded-full">
-                                    <svg class="w-5 h-5 text-indigo-600" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>
-                                </div>
-                            </div>
-                        </div>
+                    <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-4">
+                        <p class="text-[10px] font-bold text-indigo-400 uppercase tracking-wider">Unit Cost</p>
+                        <p class="text-2xl font-black text-indigo-700" x-text="formatIDR(penyerapanForm.jumlahLayanan > 0 ? (parseFloat(penyerapanForm.penyerapan || 0) / penyerapanForm.jumlahLayanan) : 0)"></p>
                     </div>
                 </div>
-
-                <div x-show="form.filePreviewData.length > 0" x-transition class="space-y-3">
-                    <div class="flex items-center justify-between">
-                        <h4 class="font-bold text-gray-800 flex items-center gap-2">
-                            <svg class="w-5 h-5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                            Pratinjau Data (langsung dari Spreadsheet)
-                        </h4>
-                        <span class="text-[10px] text-gray-400 italic" x-text="`* Menampilkan maksimal 20 dari ${form.jumlahLayanan} baris data`"></span>
-                    </div>
-                    <div class="border border-gray-100 rounded-xl overflow-x-auto shadow-sm">
-                        <table class="w-full text-[11px] text-left whitespace-nowrap">
-                            <thead class="bg-gray-100 text-gray-600 uppercase">
-                                <tr>
-                                    <template x-for="(header, idx) in form.previewHeaders" :key="idx">
-                                        <th class="px-4 py-3" x-text="header"></th>
-                                    </template>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-gray-50 bg-white">
-                                <template x-for="(row, rIdx) in form.filePreviewData.slice(0, 20)" :key="rIdx">
-                                    <tr class="hover:bg-gray-50">
-                                        <template x-for="(cell, cIdx) in row" :key="cIdx">
-                                            <td class="px-4 py-2" x-text="cell"></td>
-                                        </template>
-                                    </tr>
-                                </template>
-                            </tbody>
-                        </table>
-                    </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">Penyerapan dana bulan ini (Rp)</label>
+                    <input type="number" x-model="penyerapanForm.penyerapan" placeholder="Contoh: 50000000" class="w-full bg-gray-50 border border-gray-300 rounded-xl p-3 focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-gray-800">
+                    <p class="text-[11px] text-gray-400 mt-2">Jumlah layanan tidak bisa diubah di sini — angkanya mengikuti isi Sheet <span class="font-semibold" x-text="penyerapanForm.program"></span>.</p>
                 </div>
-
-                <div class="flex justify-center gap-4">
-                    <button @click="submitForm()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-indigo-200 transition-all flex items-center gap-2">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path></svg>
-                        <span x-text="editIndex !== null ? 'Perbarui Data' : 'Simpan Data Ke Sistem'"></span>
-                    </button>
+                <div x-show="penyerapanForm.layananTerklaim > 0" class="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    Bulan ini sudah punya <span class="font-bold" x-text="penyerapanForm.layananTerklaim"></span> layanan terklaim. Mengubah penyerapan akan mengubah unit cost, tapi klaim lama tetap memakai nominal yang sudah tercatat.
                 </div>
             </div>
-            <div class="p-4 border-t border-gray-100 bg-gray-50/50 flex justify-end rounded-b-2xl">
-                <button @click="showAddModal = false" class="px-6 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-200 rounded-lg transition-all">Tutup Jendela</button>
+            <div class="p-4 border-t border-gray-100 bg-gray-50/50 flex justify-end gap-3 rounded-b-2xl">
+                <button @click="showPenyerapanModal = false" class="px-6 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-200 rounded-lg transition-all">Batal</button>
+                <button @click="savePenyerapan()" :disabled="isSavingPenyerapan" class="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-sm font-bold transition-all flex items-center gap-2">
+                    <div x-show="isSavingPenyerapan" class="loader ease-linear rounded-full border-2 border-t-2 border-white/40 h-3 w-3"></div>
+                    <span x-text="isSavingPenyerapan ? 'Menyimpan...' : 'Simpan penyerapan'"></span>
+                </button>
             </div>
         </div>
     </div>
 
-    <!-- Modal Detail Data (Master File) -->
+    <!-- Modal Detail Data Bulanan -->
     <div x-show="showDetailModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" x-transition x-cloak>
         <div class="bg-white rounded-2xl max-w-6xl w-full max-h-[90vh] flex flex-col shadow-2xl" @click.away="showDetailModal = false">
             <div class="p-6 border-b border-gray-100 flex justify-between items-center bg-indigo-900 text-white rounded-t-2xl">
                 <div>
-                    <h3 class="text-xl font-bold">Detail Data File</h3>
-                    <p class="text-indigo-200 text-xs" x-text="`Tab Spreadsheet: ${selectedItem?.sheetTab || '-'}`"></p>
+                    <h3 class="text-xl font-bold">Data Layanan Bulanan</h3>
+                    <p class="text-indigo-200 text-xs" x-text="`Sheet ${selectedItem?.sheetTab || '-'} — ${selectedItem?.bulan || '-'}`"></p>
                 </div>
-                <button @click="showDetailModal = false" class="text-indigo-200 hover:text-white">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                </button>
+                <div class="flex items-center gap-4">
+                    <button @click="exportDetailRows()" :disabled="isLoadingDetail" class="flex items-center gap-2 bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all disabled:opacity-50">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                        Export Excel
+                    </button>
+                    <button @click="showDetailModal = false" class="text-indigo-200 hover:text-white">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
             </div>
 
             <div class="overflow-y-auto p-6 bg-gray-50">
-                <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-4 gap-4 mb-6 text-center">
-                    <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                        <p class="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Bulan & Program</p>
-                        <p class="text-lg font-bold text-gray-800" x-text="`${selectedItem?.bulan} - ${selectedItem?.program || 'Klinik'}`"></p>
-                    </div>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 text-center">
                     <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                         <p class="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Jumlah Layanan</p>
                         <p class="text-lg font-bold text-indigo-600" x-text="selectedItem?.jumlahLayanan"></p>
@@ -580,39 +537,43 @@
                     </div>
                     <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                         <p class="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Unit Cost</p>
-                        <p class="text-lg font-bold text-gray-800" x-text="formatIDR(selectedItem?.jumlahLayanan > 0 ? (selectedItem.penyerapan / selectedItem.jumlahLayanan) : 0)"></p>
+                        <p class="text-lg font-bold text-gray-800" x-text="formatIDR(selectedItem?.unitCost || 0)"></p>
                     </div>
                     <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                        <p class="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Nominal Diclaim</p>
-                        <p class="text-lg font-bold text-amber-600" x-text="formatIDR(getClaimedNominal(selectedItem?.bulan, selectedItem?.program))"></p>
+                        <p class="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Nominal Diklaim</p>
+                        <p class="text-lg font-bold text-amber-600" x-text="formatIDR(selectedItem?.nominalTerklaim || 0)"></p>
                     </div>
                     <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                         <p class="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Layanan Terklaim</p>
-                        <p class="text-lg font-bold text-indigo-500" x-text="`${Math.floor(getClaimedUnits(selectedItem?.bulan, selectedItem?.program))} Unit`"></p>
-                    </div>
-                    <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                        <p class="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Saldo (Sisa Dana)</p>
-                        <p class="text-lg font-bold text-red-500" x-text="formatIDR((selectedItem?.penyerapan || 0) - getClaimedNominal(selectedItem?.bulan, selectedItem?.program))"></p>
+                        <p class="text-lg font-bold text-indigo-500" x-text="`${selectedItem?.layananTerklaim || 0} Unit`"></p>
                     </div>
                     <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                         <p class="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Sisa Layanan</p>
-                        <p class="text-lg font-bold text-orange-500" x-text="`${Math.floor((selectedItem?.jumlahLayanan || 0) - getClaimedUnits(selectedItem?.bulan, selectedItem?.program))} Unit`"></p>
+                        <p class="text-lg font-bold text-orange-500" x-text="`${selectedItem?.sisaLayanan || 0} Unit`"></p>
+                    </div>
+                    <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                        <p class="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Saldo (Sisa Dana)</p>
+                        <p class="text-lg font-bold text-red-500" x-text="formatIDR(selectedItem?.sisaSaldo || 0)"></p>
+                    </div>
+                    <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                        <p class="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Cabang / Kantor</p>
+                        <p class="text-lg font-bold text-gray-800" x-text="`${Object.keys(selectedItem?.branchRatio || {}).length} Titik`"></p>
                     </div>
                 </div>
 
                 <h4 class="font-bold text-gray-700 mb-3 flex items-center gap-2">
                     <svg class="w-4 h-4 text-indigo-500" fill="currentColor" viewBox="0 0 20 20"><path d="M7 3a1 1 0 000 2h6a1 1 0 100-2H7zM4 7a1 1 0 011-1h10a1 1 0 110 2H5a1 1 0 01-1-1zM2 11a2 2 0 012-2h12a2 2 0 012 2v4a2 2 0 01-2 2H4a2 2 0 01-2-2v-4z"></path></svg>
-                    Data Layanan (Live dari Spreadsheet)
+                    Baris layanan bulan ini (live dari spreadsheet)
                 </h4>
-                
+
                 <div class="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-inner">
                     <template x-if="isLoadingDetail">
-                        <div class="p-8 text-center text-gray-400 italic">Memuat data dari Spreadsheet...</div>
+                        <div class="p-8 text-center text-gray-400 italic">Menarik data dari spreadsheet...</div>
                     </template>
                     <template x-if="!isLoadingDetail && detailRows.length > 0">
-                        <div class="overflow-x-auto">
+                        <div class="overflow-x-auto max-h-[50vh]">
                             <table class="w-full text-xs text-left whitespace-nowrap">
-                                <thead class="bg-gray-100 text-gray-500 uppercase text-[10px]">
+                                <thead class="bg-gray-100 text-gray-500 uppercase text-[10px] sticky top-0">
                                     <tr>
                                         <th class="px-4 py-3">Status</th>
                                         <th class="px-4 py-3">No. Baris</th>
@@ -633,7 +594,7 @@
                                                 </template>
                                             </td>
                                             <td class="px-4 py-2 text-gray-400" x-text="row.rowNumber"></td>
-                                            <template x-for="cell in row.cells" :key="cell">
+                                            <template x-for="(cell, ci) in row.cells" :key="ci">
                                                 <td class="px-4 py-2 text-gray-600" x-text="cell"></td>
                                             </template>
                                         </tr>
@@ -644,7 +605,7 @@
                     </template>
                     <template x-if="!isLoadingDetail && detailRows.length === 0">
                         <div class="p-8 text-center">
-                            <p class="text-gray-400 italic">Data tidak ditemukan. Pastikan nama tab spreadsheet benar dan sudah berisi data.</p>
+                            <p class="text-gray-400 italic">Tidak ada baris untuk bulan ini. Periksa kolom Bulan di sheet, lalu sinkronkan ulang.</p>
                         </div>
                     </template>
                 </div>
@@ -664,11 +625,11 @@
                     <p class="text-emerald-100 text-xs" x-text="`Donatur: ${selectedClaim?.donatur} (${selectedClaim?.hasilLayanan} Layanan)`"></p>
                 </div>
                 <div class="flex items-center gap-4">
-                    <button @click="exportClaimDetails(selectedClaim)" :disabled="isLoadingClaimDetail" class="flex items-center gap-2 bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all disabled:opacity-50" title="Download Excel Rincian">
+                    <button @click="exportClaimDetails(selectedClaim)" :disabled="isLoadingClaimDetail" class="flex items-center gap-2 bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all disabled:opacity-50">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                         Export Excel
                     </button>
-                    <button @click="showClaimDetailModal = false" class="text-emerald-100 hover:text-white" title="Tutup Modal">
+                    <button @click="showClaimDetailModal = false" class="text-emerald-100 hover:text-white" title="Tutup">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                     </button>
                 </div>
@@ -676,17 +637,17 @@
 
             <div class="overflow-y-auto p-6 bg-white">
                 <div class="mb-6 p-4 bg-emerald-50 rounded-xl border border-emerald-100">
-                    <p class="text-xs text-emerald-700 font-medium italic">Data di bawah ini diambil langsung dari Spreadsheet berdasarkan nomor baris yang tercatat pada klaim ini.</p>
+                    <p class="text-xs text-emerald-700 font-medium italic">Baris di bawah diambil langsung dari spreadsheet berdasarkan nomor baris yang tercatat pada klaim ini.</p>
                 </div>
-                
+
                 <div class="border border-gray-100 rounded-xl overflow-hidden shadow-sm">
                     <template x-if="isLoadingClaimDetail">
-                        <div class="p-8 text-center text-gray-400 italic">Memuat data dari Spreadsheet...</div>
+                        <div class="p-8 text-center text-gray-400 italic">Menarik data dari spreadsheet...</div>
                     </template>
                     <template x-if="!isLoadingClaimDetail">
-                        <div class="overflow-x-auto">
+                        <div class="overflow-x-auto max-h-[50vh]">
                             <table class="w-full text-[11px] text-left whitespace-nowrap">
-                                <thead class="bg-gray-50 text-gray-500 uppercase text-[10px]">
+                                <thead class="bg-gray-50 text-gray-500 uppercase text-[10px] sticky top-0">
                                     <tr>
                                         <th class="px-4 py-3">No. Baris</th>
                                         <template x-for="h in claimDetailHeaders" :key="h">
@@ -698,7 +659,7 @@
                                     <template x-for="row in claimDetailRows" :key="row.rowNumber">
                                         <tr class="hover:bg-gray-50">
                                             <td class="px-4 py-2 text-gray-400" x-text="row.rowNumber"></td>
-                                            <template x-for="cell in row.cells" :key="cell">
+                                            <template x-for="(cell, ci) in row.cells" :key="ci">
                                                 <td class="px-4 py-2 text-gray-600" x-text="cell"></td>
                                             </template>
                                         </tr>
@@ -717,28 +678,7 @@
 
     <script>
         // ==================================================================
-        // KONFIGURASI FIREBASE — WAJIB DIISI SEBELUM APLIKASI DAPAT DIGUNAKAN
-        // ==================================================================
-        // 1. Buka https://console.firebase.google.com -> buat/pilih project.
-        // 2. Buka menu "Build > Firestore Database" -> klik "Create database"
-        //    (pilih mode production, lalu atur Security Rules di bawah).
-        // 3. Buka "Build > Authentication" -> tab "Sign-in method" -> aktifkan
-        //    provider "Anonymous". Ini dipakai agar setiap perangkat/user bisa
-        //    membaca & menulis data sesuai Security Rules tanpa perlu login manual.
-        // 4. Buka "Project settings" (ikon gerigi) -> scroll ke "Your apps" ->
-        //    pilih ikon Web (</>) -> salin objek firebaseConfig ke bawah ini.
-        //
-        // Contoh Security Rules Firestore (Firestore Database > Rules) agar hanya
-        // user yang sudah login (termasuk anonim) yang bisa akses:
-        //
-        //   rules_version = '2';
-        //   service cloud.firestore {
-        //     match /databases/{database}/documents {
-        //       match /{document=**} {
-        //         allow read, write: if request.auth != null;
-        //       }
-        //     }
-        //   }
+        // KONFIGURASI FIREBASE
         // ==================================================================
         const firebaseConfig = {
             apiKey: "AIzaSyApirq3kIeLuvKRneV9ss6fMFNfxwDOw8c",
@@ -754,74 +694,88 @@
         const db = firebase.firestore();
         const auth = firebase.auth();
 
-        // Nama koleksi Firestore yang dipakai aplikasi ini
-        const LAYANAN_COLLECTION = 'claim_donasi_layanan';
+        // Firestore hanya menyimpan dua hal:
+        //  1. penyerapan dana per (program + bulan)  -> tidak ada di spreadsheet
+        //  2. riwayat klaim + nomor baris yang ditarik
+        // Jumlah layanan SELALU dibaca dari spreadsheet (mirroring).
+        const PENYERAPAN_COLLECTION = 'claim_donasi_penyerapan';
         const KLAIM_COLLECTION = 'claim_donasi_klaim';
 
         // ==================================================================
         // KONFIGURASI GOOGLE SHEETS WEB APP — WAJIB DIISI
         // ==================================================================
-        // Data mentah (baris-baris laporan layanan) kini disimpan di Google
-        // Spreadsheet, BUKAN di Firestore lagi — supaya database tetap ringan.
-        // Firestore hanya menyimpan metadata (program, bulan, penyerapan, dst)
-        // dan status klaim (nomor baris yang sudah diklaim).
-        //
-        // Cara membuat SHEETS_WEBAPP_URL:
-        // 1. Buka Google Spreadsheet Anda -> Extensions > Apps Script.
-        // 2. Hapus isi Code.gs, ganti dengan kode yang saya berikan di chat.
-        // 3. Klik Deploy > New deployment > pilih tipe "Web app".
-        //    - Execute as: Me
-        //    - Who has access: Anyone
-        // 4. Klik Deploy, salin "Web app URL" yang muncul, tempel di bawah ini.
+        // 1. Buka spreadsheet "Layanan Klinik dan Ambulance 2026"
+        //    -> Extensions > Apps Script, tempel isi file Code.gs.
+        // 2. Deploy > New deployment > Web app
+        //      Execute as: Me   |   Who has access: Anyone
+        // 3. Salin Web app URL ke bawah ini.
         // ==================================================================
-        const SHEETS_WEBAPP_URL = "GANTI_DENGAN_URL_WEB_APP_ANDA";
+        const SHEETS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbxwkdSWW5fe3Vw_4I6Xj3Me3wa5kTji2DySULidpof2186oLseyV93d2xCYCb9ghCT5/exec";
 
-        // Mengambil data (headers + baris) dari 1 tab spreadsheet lewat Apps Script Web App.
-        // Mengembalikan { headers: string[], rows: [{ rowNumber, cells: [...] }] }
-        async function fetchSheetRows(tabName) {
+        // Nama sheet di spreadsheet, satu sheet per program, berisi data satu tahun.
+        const SHEET_TAB = { Klinik: 'Klinik', Ambulance: 'Ambulance' };
+        const PROGRAMS = ['Klinik', 'Ambulance'];
+
+        async function callSheets(params) {
             if (!SHEETS_WEBAPP_URL || SHEETS_WEBAPP_URL.startsWith('GANTI_DENGAN')) {
-                throw new Error('SHEETS_WEBAPP_URL belum dikonfigurasi. Lihat komentar KONFIGURASI GOOGLE SHEETS WEB APP di dalam kode.');
+                throw new Error('SHEETS_WEBAPP_URL belum diisi. Lihat blok KONFIGURASI GOOGLE SHEETS WEB APP di dalam kode.');
             }
-            const url = `${SHEETS_WEBAPP_URL}?action=getRows&tab=${encodeURIComponent(tabName)}`;
-            const res = await fetch(url);
-            if (!res.ok) throw new Error(`Gagal menghubungi Spreadsheet (status ${res.status})`);
+            const qs = new URLSearchParams(params).toString();
+            const res = await fetch(`${SHEETS_WEBAPP_URL}?${qs}`);
+            if (!res.ok) throw new Error(`Spreadsheet tidak merespons (status ${res.status}).`);
             const data = await res.json();
             if (data.error) throw new Error(data.error);
-            return { headers: data.headers || [], rows: data.rows || [] };
+            return data;
         }
 
-        // Menerjemahkan error Firestore/Firebase menjadi pesan yang mudah dipahami pengguna
+        // Rekap jumlah layanan per bulan untuk kedua sheet sekaligus.
+        function fetchSheetSummary() {
+            return callSheets({ action: 'getSummary' });
+        }
+
+        // Baris mentah: bisa difilter per bulan, atau per daftar nomor baris.
+        function fetchSheetRows(tab, opts = {}) {
+            const params = { action: 'getRows', tab: tab };
+            if (opts.bulan) params.bulan = opts.bulan;
+            if (opts.rows && opts.rows.length) params.rows = opts.rows.join(',');
+            return callSheets(params);
+        }
+
         function explainFirebaseError(e) {
             const code = e && e.code ? e.code : '';
             if (code === 'permission-denied') {
-                return 'Ditolak oleh Security Rules Firestore. Pastikan Anonymous Sign-in aktif dan Security Rules mengizinkan akses (allow read, write: if request.auth != null).';
+                return 'Ditolak oleh Security Rules Firestore. Pastikan Anonymous Sign-in aktif dan rules mengizinkan akses (allow read, write: if request.auth != null).';
             }
             if (code === 'unavailable' || code === 'deadline-exceeded') {
-                return 'Server Firestore tidak dapat dijangkau. Periksa koneksi internet Anda dan coba lagi.';
+                return 'Server Firestore tidak dapat dijangkau. Periksa koneksi internet, lalu coba lagi.';
             }
             return (e && e.message) ? e.message : 'Kesalahan tidak diketahui.';
         }
 
         function dashboardApp() {
-            let myChartKlinik = null; // Variabel chart disimpan di luar state reaktif Alpine.js
+            let myChartKlinik = null;
             let myChartAmbulance = null;
-            let unsubLayanan = null; // handle unsubscribe listener realtime layanan
-            let unsubKlaim = null;   // handle unsubscribe listener realtime klaim
+            let unsubPenyerapan = null;
+            let unsubKlaim = null;
+            let autoSyncTimer = null;
 
             return {
                 activeMenu: 'dashboard',
                 isOnline: false,
                 connectionStatus: 'Menghubungkan ke server...',
+                sheetStatus: 'Spreadsheet: menunggu',
+                sheetError: '',
+                isSyncing: false,
+                lastSync: '',
                 searchQuery: '',
                 filterProgram: 'Semua',
                 filterBulan: 'Semua',
                 dashFilterProgram: 'Semua',
                 dashFilterBulan: 'Semua',
-                showAddModal: false,
+                showPenyerapanModal: false,
                 showDetailModal: false,
                 showClaimDetailModal: false,
-                isReadingFile: false,
-                editIndex: null,
+                isSavingPenyerapan: false,
                 selectedItem: null,
                 selectedClaim: null,
                 detailRows: [],
@@ -833,149 +787,226 @@
                 isLoadingClaimDetail: false,
                 isCalculatingClaim: false,
                 monthsList: ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'],
-                
-                form: {
-                    program: 'Klinik',
-                    bulan: '',
-                    penyerapan: '',
-                    jumlahLayanan: null,
-                    sheetTab: '',
-                    previewHeaders: [],
-                    filePreviewData: []
-                },
 
-                claimForm: {
-                    program: 'Klinik',
-                    bulan: '',
-                    donatur: '',
-                    lokasi: '',
-                    sumber: '',
-                    nominal: ''
-                },
-
-                data: [],
+                // Cermin spreadsheet: { Klinik: {tab, headers, months:[...]}, Ambulance: {...} }
+                sheetSummary: {},
+                // Penyerapan dana dari Firestore: { "Klinik__Januari": 50000000, ... }
+                penyerapanMap: {},
                 claims: [],
 
+                penyerapanForm: { program: '', bulan: '', penyerapan: '', jumlahLayanan: 0, layananTerklaim: 0 },
+                claimForm: { program: 'Klinik', bulan: '', donatur: '', lokasi: '', sumber: '', nominal: '' },
+
+                /* ---------------------------------------------------------- */
+                /* INIT                                                        */
+                /* ---------------------------------------------------------- */
                 async initData() {
-                    // Konfigurasi localforage tetap dipakai, tapi HANYA untuk draft form
-                    // per-perangkat (bukan lagi untuk data utama, yang kini realtime di Firestore)
-                    localforage.config({
-                        name: 'ClaimSystemDB',
-                        storeName: 'dashboard_store'
-                    });
+                    localforage.config({ name: 'ClaimSystemDB', storeName: 'dashboard_store' });
 
+                    // Tampilkan cache spreadsheet dulu supaya layar tidak kosong saat memuat
                     try {
-                        const draftForm = await localforage.getItem('draft_form');
-                        if (draftForm) this.form = draftForm;
-
+                        const cache = await localforage.getItem('sheet_summary_cache');
+                        if (cache && cache.sheets) {
+                            this.sheetSummary = cache.sheets;
+                            this.lastSync = cache.lastSync || '';
+                            this.sheetStatus = 'Spreadsheet: dari cache';
+                        }
                         const draftClaim = await localforage.getItem('draft_claim');
                         if (draftClaim) this.claimForm = draftClaim;
                     } catch (e) {
-                        console.error("Gagal memuat draft lokal:", e);
+                        console.error('Gagal memuat cache lokal:', e);
                     }
 
                     try {
-                        // Login anonim ke Firebase agar bisa membaca/menulis sesuai Security Rules
                         await auth.signInAnonymously();
 
-                        // Listener REALTIME untuk data layanan — otomatis update di semua perangkat
-                        unsubLayanan = db.collection(LAYANAN_COLLECTION).orderBy('createdAt', 'asc')
+                        unsubPenyerapan = db.collection(PENYERAPAN_COLLECTION)
                             .onSnapshot((snapshot) => {
                                 this.isOnline = true;
-                                this.connectionStatus = 'Realtime Aktif (Firestore)';
-                                this.data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                                this.recalculateSaldo();
+                                this.connectionStatus = 'Realtime aktif (Firestore)';
+                                const map = {};
+                                snapshot.docs.forEach(doc => {
+                                    const d = doc.data();
+                                    map[doc.id] = parseFloat(d.penyerapan) || 0;
+                                });
+                                this.penyerapanMap = map;
                                 this.updateChart();
                             }, (error) => {
-                                console.error("Gagal memuat data layanan dari Firestore:", error);
+                                console.error('Gagal memuat penyerapan:', error);
                                 this.isOnline = false;
                                 this.connectionStatus = 'Gagal terhubung ke server';
                             });
 
-                        // Listener REALTIME untuk data klaim — otomatis update di semua perangkat
                         unsubKlaim = db.collection(KLAIM_COLLECTION).orderBy('createdAt', 'asc')
                             .onSnapshot((snapshot) => {
                                 this.claims = snapshot.docs.map(doc => ({ id: doc.id, selected: false, ...doc.data() }));
                                 this.updateChart();
                             }, (error) => {
-                                console.error("Gagal memuat data klaim dari Firestore:", error);
+                                console.error('Gagal memuat klaim:', error);
                             });
-
                     } catch (e) {
-                        console.error("Kesalahan koneksi Firebase:", e);
+                        console.error('Kesalahan koneksi Firebase:', e);
                         this.isOnline = false;
-                        this.connectionStatus = 'Gagal terhubung ke server. Periksa firebaseConfig.';
+                        this.connectionStatus = 'Gagal terhubung. Periksa firebaseConfig.';
                     }
 
-                    // Setup Autosave Watcher untuk Draft Form (lokal per perangkat saja)
-                    this.$watch('form', async (value) => {
-                        try { await localforage.setItem('draft_form', JSON.parse(JSON.stringify(value))); } catch (e) {}
-                    }, { deep: true });
+                    // Tarik data spreadsheet
+                    this.syncSpreadsheet(true);
+
+                    // Segarkan cermin spreadsheet tiap 5 menit selama tab terbuka
+                    autoSyncTimer = setInterval(() => {
+                        if (!document.hidden) this.syncSpreadsheet(true);
+                    }, 5 * 60 * 1000);
 
                     this.$watch('claimForm', async (value) => {
                         try { await localforage.setItem('draft_claim', JSON.parse(JSON.stringify(value))); } catch (e) {}
                     }, { deep: true });
 
-                    // Watchers untuk memperbarui Chart di Dashboard
                     this.$watch('dashFilterProgram', () => this.updateChart());
                     this.$watch('dashFilterBulan', () => this.updateChart());
                     this.$watch('activeMenu', (val) => {
-                        if(val === 'dashboard') {
-                            setTimeout(() => { if(!myChartKlinik || !myChartAmbulance) this.initChart(); else this.updateChart(); }, 100);
+                        if (val === 'dashboard') {
+                            setTimeout(() => { if (!myChartKlinik || !myChartAmbulance) this.initChart(); else this.updateChart(); }, 100);
                         }
                     });
-                    
-                    // Init Chart Pertama Kali
-                    if(this.activeMenu === 'dashboard') {
-                        setTimeout(() => this.initChart(), 300);
+
+                    if (this.activeMenu === 'dashboard') setTimeout(() => this.initChart(), 300);
+                },
+
+                /* ---------------------------------------------------------- */
+                /* MIRRORING SPREADSHEET                                       */
+                /* ---------------------------------------------------------- */
+                async syncSpreadsheet(silent = false) {
+                    if (this.isSyncing) return;
+                    this.isSyncing = true;
+                    this.sheetStatus = 'Spreadsheet: menarik data...';
+                    try {
+                        const summary = await fetchSheetSummary();
+                        this.sheetSummary = summary.sheets || {};
+                        this.lastSync = new Date().toLocaleString('id-ID');
+                        this.sheetError = '';
+                        this.sheetStatus = 'Spreadsheet: tersambung';
+                        await localforage.setItem('sheet_summary_cache', {
+                            sheets: JSON.parse(JSON.stringify(this.sheetSummary)),
+                            lastSync: this.lastSync
+                        });
+                        this.updateChart();
+                    } catch (e) {
+                        console.error('Gagal menarik data spreadsheet:', e);
+                        this.sheetError = e.message;
+                        this.sheetStatus = 'Spreadsheet: gagal';
+                        if (!silent) alert('Gagal menarik data dari spreadsheet.\n\nPenyebab: ' + e.message);
+                    } finally {
+                        this.isSyncing = false;
                     }
                 },
 
-                // Filter Data Untuk Menu Laporan
+                get mirrorInfoText() {
+                    const parts = [];
+                    PROGRAMS.forEach(p => {
+                        const s = this.sheetSummary[p];
+                        if (!s) return;
+                        parts.push(`Sheet ${p}: ${s.totalBaris} baris, ${s.months.length} bulan terbaca` + (s.tanpaBulan ? `, ${s.tanpaBulan} baris tanpa bulan` : ''));
+                    });
+                    if (parts.length === 0) return 'Belum ada data. Klik "Tarik ulang data".';
+                    return parts.join(' · ');
+                },
+
+                /* ---------------------------------------------------------- */
+                /* DATA GABUNGAN (spreadsheet + penyerapan + klaim)            */
+                /* ---------------------------------------------------------- */
+                get data() {
+                    const out = [];
+                    PROGRAMS.forEach(program => {
+                        const info = this.sheetSummary[program];
+                        if (!info || !info.months) return;
+                        info.months.forEach(m => {
+                            const id = `${program}__${m.bulan}`;
+                            const penyerapan = this.penyerapanMap[id] || 0;
+                            const jumlahLayanan = m.jumlahLayanan;
+                            const nominalTerklaim = this.getClaimedNominal(m.bulan, program);
+                            const layananTerklaim = this.getClaimedUnits(m.bulan, program);
+                            out.push({
+                                id: id,
+                                program: program,
+                                bulan: m.bulan,
+                                sheetTab: info.tab || SHEET_TAB[program],
+                                jumlahLayanan: jumlahLayanan,
+                                penyerapan: penyerapan,
+                                branchRatio: m.branchRatio || {},
+                                cabangCount: m.cabangCount || {},
+                                unitCost: jumlahLayanan > 0 ? (penyerapan / jumlahLayanan) : 0,
+                                nominalTerklaim: nominalTerklaim,
+                                layananTerklaim: layananTerklaim,
+                                sisaSaldo: penyerapan - nominalTerklaim,
+                                sisaLayanan: Math.floor(jumlahLayanan - layananTerklaim)
+                            });
+                        });
+                    });
+                    return out.sort((a, b) => {
+                        const ia = this.monthsList.indexOf(a.bulan);
+                        const ib = this.monthsList.indexOf(b.bulan);
+                        if (ia !== ib) return ia - ib;
+                        return a.program.localeCompare(b.program);
+                    });
+                },
+
+                findRecord(bulan, program) {
+                    return this.data.find(d => d.bulan === bulan && d.program === program) || null;
+                },
+
+                availableMonths(program) {
+                    const info = this.sheetSummary[program];
+                    if (!info || !info.months) return [];
+                    return info.months.map(m => m.bulan);
+                },
+
+                availableBranches(program, bulan) {
+                    const rec = this.findRecord(bulan, program);
+                    return rec ? Object.keys(rec.cabangCount) : [];
+                },
+
                 get filteredData() {
                     let result = this.data;
-                    if (this.filterProgram !== 'Semua') result = result.filter(item => (item.program || 'Klinik') === this.filterProgram);
-                    if (this.filterBulan !== 'Semua') result = result.filter(item => item.bulan === this.filterBulan);
+                    if (this.filterProgram !== 'Semua') result = result.filter(i => i.program === this.filterProgram);
+                    if (this.filterBulan !== 'Semua') result = result.filter(i => i.bulan === this.filterBulan);
                     if (this.searchQuery) {
-                        result = result.filter(item => 
-                            item.bulan.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
-                            (item.program || 'Klinik').toLowerCase().includes(this.searchQuery.toLowerCase())
-                        );
+                        const q = this.searchQuery.toLowerCase();
+                        result = result.filter(i => i.bulan.toLowerCase().includes(q) || i.program.toLowerCase().includes(q));
                     }
                     return result;
                 },
 
-                // Filter Data Untuk Menu Dashboard Resume
                 get dashFilteredData() {
                     let result = this.data;
-                    if (this.dashFilterProgram !== 'Semua') result = result.filter(item => (item.program || 'Klinik') === this.dashFilterProgram);
-                    if (this.dashFilterBulan !== 'Semua') result = result.filter(item => item.bulan === this.dashFilterBulan);
-                    
-                    // Tambahkan calculated fields khusus untuk view breakdown tabel resume
-                    return result.map(item => {
-                        const prog = item.program || 'Klinik';
-                        const cNom = this.getClaimedNominal(item.bulan, prog);
-                        const cUnit = this.getClaimedUnits(item.bulan, prog);
-                        return {
-                            ...item,
-                            sisaSaldo: item.penyerapan - cNom,
-                            sisaLayanan: Math.floor(item.jumlahLayanan - cUnit)
-                        };
-                    });
+                    if (this.dashFilterProgram !== 'Semua') result = result.filter(i => i.program === this.dashFilterProgram);
+                    if (this.dashFilterBulan !== 'Semua') result = result.filter(i => i.bulan === this.dashFilterBulan);
+                    return result;
                 },
 
                 get dashSummary() {
-                    let totalSisaLayanan = 0;
-                    let totalSisaSaldo = 0;
-
+                    let totalSisaLayanan = 0, totalSisaSaldo = 0, totalLayanan = 0;
                     this.dashFilteredData.forEach(item => {
                         totalSisaSaldo += item.sisaSaldo;
                         totalSisaLayanan += item.sisaLayanan;
+                        totalLayanan += item.jumlahLayanan;
                     });
-
-                    return { saldo: totalSisaSaldo, layanan: totalSisaLayanan };
+                    return { saldo: totalSisaSaldo, layanan: totalSisaLayanan, totalLayanan: totalLayanan };
                 },
 
+                get sisaLayananKlaim() {
+                    const rec = this.findRecord(this.claimForm.bulan, this.claimForm.program);
+                    return rec ? rec.sisaLayanan : 0;
+                },
+
+                get sisaSaldoKlaim() {
+                    const rec = this.findRecord(this.claimForm.bulan, this.claimForm.program);
+                    return rec ? rec.sisaSaldo : 0;
+                },
+
+                /* ---------------------------------------------------------- */
+                /* CHART                                                       */
+                /* ---------------------------------------------------------- */
                 getChartConfig() {
                     return {
                         type: 'bar',
@@ -1016,7 +1047,7 @@
                                 legend: { position: 'top' },
                                 tooltip: {
                                     callbacks: {
-                                        label: function(context) {
+                                        label: function (context) {
                                             let label = context.dataset.label || '';
                                             if (label) label += ': ';
                                             if (context.dataset.yAxisID === 'y1') {
@@ -1032,20 +1063,16 @@
                             scales: {
                                 x: { grid: { display: false } },
                                 y: {
-                                    type: 'linear',
-                                    display: true,
-                                    position: 'left',
-                                    title: { display: true, text: 'Layanan (Unit)', font: {size: 10, weight: 'bold'} }
+                                    type: 'linear', display: true, position: 'left',
+                                    title: { display: true, text: 'Layanan (Unit)', font: { size: 10, weight: 'bold' } }
                                 },
                                 y1: {
-                                    type: 'linear',
-                                    display: true,
-                                    position: 'right',
+                                    type: 'linear', display: true, position: 'right',
                                     grid: { drawOnChartArea: false },
-                                    title: { display: true, text: 'Penyerapan (Rp)', font: {size: 10, weight: 'bold'} },
+                                    title: { display: true, text: 'Penyerapan (Rp)', font: { size: 10, weight: 'bold' } },
                                     ticks: {
-                                        callback: function(value) {
-                                            if(value >= 1000000) return (value / 1000000) + ' Jt';
+                                        callback: function (value) {
+                                            if (value >= 1000000) return (value / 1000000) + ' Jt';
                                             return value;
                                         }
                                     }
@@ -1058,95 +1085,85 @@
                 initChart() {
                     const canvasKlinik = this.$refs.chartCanvasKlinik;
                     const canvasAmbulance = this.$refs.chartCanvasAmbulance;
-                    
-                    if(canvasKlinik) {
-                        const ctxKlinik = canvasKlinik.getContext('2d');
+
+                    if (canvasKlinik) {
                         if (myChartKlinik) myChartKlinik.destroy();
-                        myChartKlinik = new Chart(ctxKlinik, this.getChartConfig());
+                        myChartKlinik = new Chart(canvasKlinik.getContext('2d'), this.getChartConfig());
                     }
-                    
-                    if(canvasAmbulance) {
-                        const ctxAmbulance = canvasAmbulance.getContext('2d');
+                    if (canvasAmbulance) {
                         if (myChartAmbulance) myChartAmbulance.destroy();
-                        myChartAmbulance = new Chart(ctxAmbulance, this.getChartConfig());
+                        myChartAmbulance = new Chart(canvasAmbulance.getContext('2d'), this.getChartConfig());
                     }
-                    
                     this.updateChart();
                 },
 
                 updateChart() {
                     const data = this.dashFilteredData;
 
-                    // Update Klinik Chart
                     if (myChartKlinik) {
-                        const dataKlinik = data.filter(d => (d.program || 'Klinik') === 'Klinik');
-                        myChartKlinik.data.labels = dataKlinik.map(d => d.bulan);
-                        myChartKlinik.data.datasets[0].data = dataKlinik.map(d => d.jumlahLayanan);
-                        myChartKlinik.data.datasets[1].data = dataKlinik.map(d => d.penyerapan);
+                        const d = data.filter(x => x.program === 'Klinik');
+                        myChartKlinik.data.labels = d.map(x => x.bulan);
+                        myChartKlinik.data.datasets[0].data = d.map(x => x.jumlahLayanan);
+                        myChartKlinik.data.datasets[1].data = d.map(x => x.penyerapan);
                         myChartKlinik.update();
                     }
-
-                    // Update Ambulance Chart
                     if (myChartAmbulance) {
-                        const dataAmbulance = data.filter(d => d.program === 'Ambulance');
-                        myChartAmbulance.data.labels = dataAmbulance.map(d => d.bulan);
-                        myChartAmbulance.data.datasets[0].data = dataAmbulance.map(d => d.jumlahLayanan);
-                        myChartAmbulance.data.datasets[1].data = dataAmbulance.map(d => d.penyerapan);
+                        const d = data.filter(x => x.program === 'Ambulance');
+                        myChartAmbulance.data.labels = d.map(x => x.bulan);
+                        myChartAmbulance.data.datasets[0].data = d.map(x => x.jumlahLayanan);
+                        myChartAmbulance.data.datasets[1].data = d.map(x => x.penyerapan);
                         myChartAmbulance.update();
                     }
                 },
 
-                recalculateSaldo() {
-                    let currentSaldo = 500000000;
-                    for (let i = 0; i < this.data.length; i++) {
-                        currentSaldo -= this.data[i].penyerapan;
-                        this.data[i].saldo = currentSaldo;
-                    }
-                },
-
-                openAddModal() {
-                    this.editIndex = null;
-                    this.form = { program: 'Klinik', bulan: '', penyerapan: '', jumlahLayanan: null, sheetTab: '', previewHeaders: [], filePreviewData: [] };
-                    this.showAddModal = true;
-                },
-
-                editRow(item) {
-                    if (!item || !item.id) return;
-                    this.editIndex = item.id; // menyimpan ID dokumen Firestore yang sedang diedit
-                    this.form = { 
-                        program: item.program || 'Klinik',
-                        bulan: item.bulan, 
-                        penyerapan: item.penyerapan, 
-                        jumlahLayanan: item.jumlahLayanan, 
-                        sheetTab: item.sheetTab || '', 
-                        filePreviewData: [], 
-                        previewHeaders: [] 
+                /* ---------------------------------------------------------- */
+                /* PENYERAPAN DANA                                             */
+                /* ---------------------------------------------------------- */
+                openPenyerapanModal(item) {
+                    this.penyerapanForm = {
+                        program: item.program,
+                        bulan: item.bulan,
+                        penyerapan: item.penyerapan || '',
+                        jumlahLayanan: item.jumlahLayanan,
+                        layananTerklaim: item.layananTerklaim
                     };
-                    this.showAddModal = true;
-                    if (this.form.sheetTab) this.cekDataSheet();
+                    this.showPenyerapanModal = true;
                 },
 
-                // Mengambil & menampilkan pratinjau data dari tab Spreadsheet yang dituju,
-                // sekaligus menghitung rasio distribusi cabang untuk logika klaim proporsional.
-                async cekDataSheet() {
-                    if (!this.form.sheetTab) return;
-                    this.isReadingFile = true;
+                async savePenyerapan() {
+                    const nominal = parseFloat(this.penyerapanForm.penyerapan);
+                    if (isNaN(nominal) || nominal < 0) {
+                        alert('Isi penyerapan dana dengan angka yang benar.');
+                        return;
+                    }
+
+                    const rec = this.findRecord(this.penyerapanForm.bulan, this.penyerapanForm.program);
+                    if (rec && nominal < rec.nominalTerklaim) {
+                        alert(`Penyerapan tidak boleh lebih kecil dari nominal yang sudah diklaim (${this.formatIDR(rec.nominalTerklaim)}). Hapus klaim terkait dulu bila ingin menurunkannya.`);
+                        return;
+                    }
+
+                    this.isSavingPenyerapan = true;
+                    const id = `${this.penyerapanForm.program}__${this.penyerapanForm.bulan}`;
                     try {
-                        const { headers, rows } = await fetchSheetRows(this.form.sheetTab);
-                        if (rows.length === 0) {
-                            alert('Tab spreadsheet ditemukan tapi tidak berisi data. Pastikan baris 1 berisi header dan data dimulai dari baris 2.');
-                        }
-                        this.form.previewHeaders = headers;
-                        this.form.filePreviewData = rows.map(r => r.cells);
-                        this.form.jumlahLayanan = rows.length;
+                        await db.collection(PENYERAPAN_COLLECTION).doc(id).set({
+                            program: this.penyerapanForm.program,
+                            bulan: this.penyerapanForm.bulan,
+                            penyerapan: nominal,
+                            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                        }, { merge: true });
+                        this.showPenyerapanModal = false;
                     } catch (e) {
-                        console.error('Gagal mengambil data spreadsheet:', e);
-                        alert('Gagal mengambil data dari Spreadsheet.\n\nPenyebab: ' + e.message);
+                        console.error('Gagal menyimpan penyerapan:', e);
+                        alert('Gagal menyimpan penyerapan.\n\nPenyebab: ' + explainFirebaseError(e));
                     } finally {
-                        this.isReadingFile = false;
+                        this.isSavingPenyerapan = false;
                     }
                 },
 
+                /* ---------------------------------------------------------- */
+                /* DETAIL                                                      */
+                /* ---------------------------------------------------------- */
                 async viewDetails(item) {
                     this.selectedItem = item;
                     this.showDetailModal = true;
@@ -1154,18 +1171,18 @@
                     this.detailRows = [];
                     this.detailHeaders = [];
                     try {
-                        const { headers, rows } = await fetchSheetRows(item.sheetTab);
+                        const { headers, rows } = await fetchSheetRows(item.sheetTab, { bulan: item.bulan });
                         this.detailHeaders = headers;
                         this.detailRows = rows;
-                        // Kumpulkan semua nomor baris yang sudah diklaim untuk bulan+program ini
+
                         const claimedSet = new Set();
                         this.claims
                             .filter(c => c.bulan === item.bulan && (c.program || 'Klinik') === item.program && c.sheetTab === item.sheetTab)
                             .forEach(c => (c.claimedRows || []).forEach(rn => claimedSet.add(rn)));
                         this.detailClaimedSet = claimedSet;
                     } catch (e) {
-                        console.error('Gagal memuat detail dari spreadsheet:', e);
-                        alert('Gagal memuat data dari Spreadsheet.\n\nPenyebab: ' + e.message);
+                        console.error('Gagal memuat detail:', e);
+                        alert('Gagal memuat data dari spreadsheet.\n\nPenyebab: ' + e.message);
                     } finally {
                         this.isLoadingDetail = false;
                     }
@@ -1178,13 +1195,13 @@
                     this.claimDetailRows = [];
                     this.claimDetailHeaders = [];
                     try {
-                        const { headers, rows } = await fetchSheetRows(claim.sheetTab);
-                        const claimedRowSet = new Set(claim.claimedRows || []);
+                        const tab = claim.sheetTab || SHEET_TAB[claim.program || 'Klinik'];
+                        const { headers, rows } = await fetchSheetRows(tab, { rows: claim.claimedRows || [] });
                         this.claimDetailHeaders = headers;
-                        this.claimDetailRows = rows.filter(r => claimedRowSet.has(r.rowNumber));
+                        this.claimDetailRows = rows;
                     } catch (e) {
-                        console.error('Gagal memuat detail klaim dari spreadsheet:', e);
-                        alert('Gagal memuat data dari Spreadsheet.\n\nPenyebab: ' + e.message);
+                        console.error('Gagal memuat rincian klaim:', e);
+                        alert('Gagal memuat data dari spreadsheet.\n\nPenyebab: ' + e.message);
                     } finally {
                         this.isLoadingClaimDetail = false;
                     }
@@ -1194,211 +1211,127 @@
                     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(num || 0);
                 },
 
-                async submitForm() {
-                    if (!this.form.bulan || !this.form.penyerapan || !this.form.sheetTab || this.form.jumlahLayanan === null) {
-                        alert("Harap lengkapi semua data, dan klik 'Ambil & Cek Data' terlebih dahulu!"); return;
-                    }
-
-                    // Dinamis mengecek kolom cabang atau kantor berdasarkan program yg dimasukkan
-                    const cabangIdx = this.form.previewHeaders.findIndex(h => 
-                        h && (h.toString().toLowerCase().includes('cabang') || h.toString().toLowerCase().includes('kantor'))
-                    );
-
-                    let branchDistribution = {};
-                    if (cabangIdx !== -1) {
-                        const totalRows = this.form.filePreviewData.length;
-                        this.form.filePreviewData.forEach(row => {
-                            const branchName = row[cabangIdx] || "Tidak Diketahui";
-                            branchDistribution[branchName] = (branchDistribution[branchName] || 0) + 1;
-                        });
-                        Object.keys(branchDistribution).forEach(key => {
-                            branchDistribution[key] = branchDistribution[key] / totalRows;
-                        });
-                    } else {
-                        branchDistribution = { "Default": 1 };
-                    }
-
-                    const penyerapanVal = parseFloat(this.form.penyerapan);
-                    // Hanya simpan METADATA ringan ke Firestore — data mentah tetap di Spreadsheet
-                    const finalData = { 
-                        program: this.form.program,
-                        bulan: this.form.bulan,
-                        penyerapan: penyerapanVal,
-                        jumlahLayanan: this.form.jumlahLayanan,
-                        sheetTab: this.form.sheetTab,
-                        branchRatio: branchDistribution
-                    };
-
-                    try {
-                        if (this.editIndex !== null) {
-                            // Mode edit: perbarui dokumen yang sudah ada di Firestore
-                            await db.collection(LAYANAN_COLLECTION).doc(this.editIndex).update(finalData);
-                        } else {
-                            // Mode tambah baru: simpan dokumen baru ke Firestore
-                            await db.collection(LAYANAN_COLLECTION).add({
-                                ...finalData,
-                                createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                            });
-                        }
-                    } catch (e) {
-                        console.error('Gagal menyimpan ke Firestore:', e);
-                        alert('Gagal menyimpan data ke server.\n\nPenyebab: ' + explainFirebaseError(e));
-                        return;
-                    }
-                    // this.data akan otomatis diperbarui oleh listener realtime (onSnapshot)
-                    
-                    // Bersihkan Form dan Draft di storage
-                    this.form = { program: 'Klinik', bulan: '', penyerapan: '', jumlahLayanan: null, sheetTab: '', previewHeaders: [], filePreviewData: [] };
-                    await localforage.removeItem('draft_form');
-                    
-                    this.showAddModal = false;
-                    this.activeMenu = 'laporan';
-                    
-                    setTimeout(() => {
-                        alert("Data berhasil disimpan dan disinkronkan secara realtime ke semua perangkat!");
-                    }, 100);
-                },
-
-                async deleteRow(index) {
-                    const itemToDelete = this.filteredData[index];
-                    if (!itemToDelete || !itemToDelete.id) return;
-                    if(confirm('Hapus data ini? Perubahan akan langsung tersinkron ke semua perangkat.')) {
-                        try {
-                            await db.collection(LAYANAN_COLLECTION).doc(itemToDelete.id).delete();
-                        } catch (e) {
-                            console.error('Gagal menghapus data:', e);
-                            alert('Gagal menghapus data di server.');
-                        }
-                    }
-                },
-
-                // CLAIMS LOGIC
+                /* ---------------------------------------------------------- */
+                /* KLAIM                                                       */
+                /* ---------------------------------------------------------- */
                 getUnitCost(bulan, program) {
-                    if (!bulan || !program) return 0;
-                    const record = this.data.find(d => d.bulan === bulan && (d.program || 'Klinik') === program);
-                    if (record && record.jumlahLayanan > 0) {
-                        return record.penyerapan / record.jumlahLayanan;
-                    }
-                    return 0;
+                    const rec = this.findRecord(bulan, program);
+                    return rec ? rec.unitCost : 0;
                 },
 
                 getClaimedNominal(bulan, program) {
                     if (!bulan || !program) return 0;
                     return this.claims
                         .filter(c => c.bulan === bulan && (c.program || 'Klinik') === program)
-                        .reduce((acc, curr) => acc + curr.nominal, 0);
+                        .reduce((acc, c) => acc + (parseFloat(c.nominal) || 0), 0);
                 },
 
                 getClaimedUnits(bulan, program) {
                     if (!bulan || !program) return 0;
                     return this.claims
                         .filter(c => c.bulan === bulan && (c.program || 'Klinik') === program)
-                        .reduce((acc, curr) => acc + parseFloat(curr.hasilLayanan), 0);
+                        .reduce((acc, c) => acc + (parseFloat(c.hasilLayanan) || 0), 0);
                 },
 
                 calculateClaimedUnits() {
                     const unitCost = this.getUnitCost(this.claimForm.bulan, this.claimForm.program);
                     const nominal = parseFloat(this.claimForm.nominal);
-                    if (unitCost > 0 && nominal > 0) {
-                        return Math.round(nominal / unitCost);
-                    }
+                    if (unitCost > 0 && nominal > 0) return Math.round(nominal / unitCost);
                     return 0;
                 },
 
                 async submitClaim() {
-                    const record = this.data.find(d => d.bulan === this.claimForm.bulan && (d.program || 'Klinik') === this.claimForm.program);
-                    const unitCost = this.getUnitCost(this.claimForm.bulan, this.claimForm.program);
-                    
-                    if (unitCost <= 0 || !record) {
-                        alert(`Gagal menghitung: Data ${this.claimForm.program} pada bulan ${this.claimForm.bulan} tidak ditemukan.`);
+                    const record = this.findRecord(this.claimForm.bulan, this.claimForm.program);
+                    if (!record) {
+                        alert(`Data ${this.claimForm.program} bulan ${this.claimForm.bulan} tidak ada di spreadsheet. Sinkronkan dulu, lalu coba lagi.`);
                         return;
                     }
-
-                    const currentSaldo = record.penyerapan - this.getClaimedNominal(this.claimForm.bulan, this.claimForm.program);
-                    if (currentSaldo <= 0) {
-                        alert("Maaf, perhitungan klaim tidak dapat dilakukan karena saldo (sisa dana) sudah habis untuk opsi ini.");
+                    if (record.unitCost <= 0) {
+                        alert(`Penyerapan dana ${this.claimForm.program} bulan ${this.claimForm.bulan} belum diisi. Buka Laporan Bulanan dan isi penyerapannya dulu.`);
                         return;
                     }
-
-                    if (parseFloat(this.claimForm.nominal) > currentSaldo) {
-                        alert(`Gagal melakukan klaim: Nominal klaim melebihi sisa saldo yang tersedia (${this.formatIDR(currentSaldo)}).`);
+                    if (record.sisaSaldo <= 0) {
+                        alert('Saldo (sisa dana) untuk kategori ini sudah habis.');
+                        return;
+                    }
+                    if (parseFloat(this.claimForm.nominal) > record.sisaSaldo) {
+                        alert(`Nominal klaim melebihi sisa saldo yang tersedia (${this.formatIDR(record.sisaSaldo)}).`);
                         return;
                     }
 
                     const totalPull = this.calculateClaimedUnits();
-                    const sisaLayanan = record.jumlahLayanan - this.getClaimedUnits(this.claimForm.bulan, this.claimForm.program);
-                    
-                    if (totalPull > sisaLayanan) {
-                        alert(`Gagal melakukan klaim: Jumlah layanan yang ditarik (${totalPull}) melebihi sisa layanan yang tersedia (${Math.floor(sisaLayanan)}).`);
+                    if (totalPull <= 0) {
+                        alert('Nominal klaim terlalu kecil — tidak ada layanan yang bisa ditarik.');
+                        return;
+                    }
+                    if (totalPull > record.sisaLayanan) {
+                        alert(`Layanan yang ditarik (${totalPull}) melebihi sisa layanan yang tersedia (${record.sisaLayanan}).`);
                         return;
                     }
 
-                    // Ambil data mentah TERBARU langsung dari Spreadsheet (bukan cache)
                     this.isCalculatingClaim = true;
-                    let headers, rows;
+                    let rows;
                     try {
-                        const fetched = await fetchSheetRows(record.sheetTab);
-                        headers = fetched.headers;
-                        rows = fetched.rows; // [{ rowNumber, cells }]
+                        // Ambil baris bulan ini langsung dari spreadsheet (data paling baru)
+                        const fetched = await fetchSheetRows(record.sheetTab, { bulan: record.bulan });
+                        rows = fetched.rows;
                     } catch (e) {
-                        console.error('Gagal mengambil data spreadsheet untuk klaim:', e);
-                        alert('Gagal mengambil data dari Spreadsheet.\n\nPenyebab: ' + e.message);
+                        console.error('Gagal mengambil baris untuk klaim:', e);
+                        alert('Gagal mengambil data dari spreadsheet.\n\nPenyebab: ' + e.message);
                         this.isCalculatingClaim = false;
                         return;
                     }
 
-                    const targetLokasi = this.claimForm.lokasi.trim();
-                    const isNasional = targetLokasi.toLowerCase() === 'nasional';
-
-                    const colKeyword = this.claimForm.program === 'Klinik' ? 'cabang' : 'kantor';
-                    let cabangIdx = headers.findIndex(h => h && h.toString().toLowerCase().includes(colKeyword));
-                    if (cabangIdx === -1) {
-                        cabangIdx = headers.findIndex(h => h && (h.toString().toLowerCase().includes('cabang') || h.toString().toLowerCase().includes('kantor')));
-                    }
-
-                    // Kumpulkan nomor baris yang SUDAH diklaim sebelumnya untuk bulan+program+tab ini
+                    // Nomor baris yang sudah pernah diklaim untuk bulan + program ini
                     const claimedRowNumbers = new Set();
                     this.claims
-                        .filter(c => c.bulan === this.claimForm.bulan && (c.program || 'Klinik') === this.claimForm.program && c.sheetTab === record.sheetTab)
+                        .filter(c => c.bulan === record.bulan && (c.program || 'Klinik') === record.program && c.sheetTab === record.sheetTab)
                         .forEach(c => (c.claimedRows || []).forEach(rn => claimedRowNumbers.add(rn)));
+
+                    const tersedia = rows.filter(r => !claimedRowNumbers.has(r.rowNumber));
+                    const targetLokasi = (this.claimForm.lokasi || '').trim();
+                    const isNasional = targetLokasi.toLowerCase() === 'nasional';
 
                     let pulledRows = [];
 
                     if (isNasional) {
-                        // LOGIKA PENARIKAN PROPORSIONAL (NASIONAL)
-                        const ratio = record.branchRatio || { "Default": 1 };
-                        Object.keys(ratio).forEach(branchName => {
-                            const branchPullCount = Math.round(totalPull * ratio[branchName]);
-                            if (branchPullCount <= 0) return;
-
-                            const branchPool = rows.filter(r => {
-                                if (claimedRowNumbers.has(r.rowNumber)) return false;
-                                if (cabangIdx === -1) return true;
-                                return r.cells[cabangIdx] === branchName;
+                        // Penarikan proporsional mengikuti rasio cabang bulan tersebut
+                        const ratio = record.branchRatio && Object.keys(record.branchRatio).length ? record.branchRatio : null;
+                        if (ratio) {
+                            Object.keys(ratio).forEach(cabang => {
+                                const jatah = Math.round(totalPull * ratio[cabang]);
+                                if (jatah <= 0) return;
+                                const pool = tersedia.filter(r => (r.cabang || 'Tidak Diketahui') === cabang && !pulledRows.includes(r));
+                                pulledRows = pulledRows.concat(pool.slice(0, jatah));
                             });
-
-                            pulledRows = pulledRows.concat(branchPool.slice(0, branchPullCount));
-                        });
+                        }
+                        // Tambal kekurangan/kelebihan akibat pembulatan rasio
+                        if (pulledRows.length < totalPull) {
+                            const dipakai = new Set(pulledRows.map(r => r.rowNumber));
+                            const sisa = tersedia.filter(r => !dipakai.has(r.rowNumber));
+                            pulledRows = pulledRows.concat(sisa.slice(0, totalPull - pulledRows.length));
+                        } else if (pulledRows.length > totalPull) {
+                            pulledRows = pulledRows.slice(0, totalPull);
+                        }
                     } else {
-                        // LOGIKA PENARIKAN CABANG/KANTOR SPESIFIK
-                        const branchPool = rows.filter(r => {
-                            if (claimedRowNumbers.has(r.rowNumber)) return false;
-                            if (cabangIdx === -1) return true;
-                            return r.cells[cabangIdx] && r.cells[cabangIdx].toString().toLowerCase() === targetLokasi.toLowerCase();
-                        });
-
-                        if (totalPull > branchPool.length) {
-                            alert(`Gagal: Sisa layanan di ${targetLokasi} hanya ${branchPool.length} unit, namun klaim membutuhkan ${totalPull} unit. Klaim dibatalkan.`);
+                        const pool = tersedia.filter(r => (r.cabang || '').toLowerCase() === targetLokasi.toLowerCase());
+                        if (totalPull > pool.length) {
+                            alert(`Sisa layanan di ${targetLokasi} hanya ${pool.length} unit, sedangkan klaim butuh ${totalPull} unit. Klaim dibatalkan.`);
                             this.isCalculatingClaim = false;
                             return;
                         }
+                        pulledRows = pool.slice(0, totalPull);
+                    }
 
-                        pulledRows = branchPool.slice(0, totalPull);
+                    if (pulledRows.length === 0) {
+                        alert('Tidak ada baris layanan yang bisa ditarik untuk kombinasi ini.');
+                        this.isCalculatingClaim = false;
+                        return;
                     }
 
                     const newClaim = {
-                        program: this.claimForm.program,
-                        bulan: this.claimForm.bulan,
+                        program: record.program,
+                        bulan: record.bulan,
                         donatur: this.claimForm.donatur,
                         lokasi: this.claimForm.lokasi,
                         sumber: this.claimForm.sumber,
@@ -1406,10 +1339,8 @@
                         hasilLayanan: pulledRows.length,
                         timestamp: new Date().toLocaleString('id-ID'),
                         sheetTab: record.sheetTab,
-                        claimedRows: pulledRows.map(r => r.rowNumber) // hanya simpan REFERENSI nomor baris, bukan isi selnya
+                        claimedRows: pulledRows.map(r => r.rowNumber) // simpan referensi baris, bukan isi selnya
                     };
-
-                    const prevProgram = record.program;
 
                     try {
                         await db.collection(KLAIM_COLLECTION).add({
@@ -1417,29 +1348,26 @@
                             createdAt: firebase.firestore.FieldValue.serverTimestamp()
                         });
                     } catch (e) {
-                        console.error('Gagal menyimpan klaim ke Firestore:', e);
+                        console.error('Gagal menyimpan klaim:', e);
                         alert('Gagal menyimpan klaim ke server.\n\nPenyebab: ' + explainFirebaseError(e));
                         this.isCalculatingClaim = false;
                         return;
                     }
+
                     this.isCalculatingClaim = false;
-                    // this.claims akan otomatis diperbarui oleh listener realtime (onSnapshot)
-                    
-                    // Bersihkan Form dan Draft di storage
-                    this.claimForm = { program: 'Klinik', bulan: '', donatur: '', lokasi: '', sumber: '', nominal: '' };
+                    this.claimForm = { program: record.program, bulan: '', donatur: '', lokasi: '', sumber: '', nominal: '' };
                     await localforage.removeItem('draft_claim');
-                    
                     this.activeMenu = 'claims';
 
                     setTimeout(() => {
-                        alert(`Klaim Berhasil! Menarik ${pulledRows.length} data layanan dari master data ${prevProgram}. Data tersinkron realtime ke semua perangkat.`);
+                        alert(`Klaim tersimpan. ${pulledRows.length} baris layanan ${record.program} bulan ${record.bulan} ditandai terklaim dan tersinkron ke semua perangkat.`);
                     }, 100);
                 },
 
                 async deleteClaim(idx) {
                     const claimToDelete = this.claims[idx];
                     if (!claimToDelete || !claimToDelete.id) return;
-                    if (confirm('Hapus klaim ini? Perubahan akan langsung tersinkron ke semua perangkat.')) {
+                    if (confirm('Hapus klaim ini? Baris layanan yang tadi ditarik akan tersedia kembali.')) {
                         try {
                             await db.collection(KLAIM_COLLECTION).doc(claimToDelete.id).delete();
                         } catch (e) {
@@ -1454,54 +1382,74 @@
                     this.claims.forEach(c => c.selected = isChecked);
                 },
 
-                exportSelectedClaims() { 
-                    const selectedClaimsToExport = this.claims.filter(c => c.selected);
-                    
-                    if (selectedClaimsToExport.length === 0) {
-                        alert("Pilih setidaknya satu data riwayat klaim untuk diekspor.");
+                /* ---------------------------------------------------------- */
+                /* EXPORT                                                      */
+                /* ---------------------------------------------------------- */
+                exportRekapBulanan() {
+                    if (this.filteredData.length === 0) {
+                        alert('Belum ada data bulanan untuk diekspor.');
                         return;
                     }
-
-                    // Susun data untuk SheetJS
-                    const wsData = [
-                        ["Waktu Klaim", "Bulan Ref", "Program", "Donatur", "Lokasi", "Sumber Dana", "Nominal (Rp)", "Hasil Layanan (Unit)"]
-                    ];
-
-                    selectedClaimsToExport.forEach(c => {
+                    const wsData = [[
+                        'Program', 'Bulan', 'Jumlah Layanan', 'Penyerapan (Rp)', 'Unit Cost (Rp)',
+                        'Layanan Terklaim', 'Nominal Terklaim (Rp)', 'Sisa Layanan', 'Sisa Saldo (Rp)'
+                    ]];
+                    this.filteredData.forEach(i => {
                         wsData.push([
-                            c.timestamp,
-                            c.bulan,
-                            c.program || 'Klinik',
-                            c.donatur,
-                            c.lokasi,
-                            c.sumber,
-                            c.nominal,
-                            c.hasilLayanan
+                            i.program, i.bulan, i.jumlahLayanan, i.penyerapan, Math.round(i.unitCost),
+                            i.layananTerklaim, i.nominalTerklaim, i.sisaLayanan, i.sisaSaldo
                         ]);
                     });
-
-                    // Konversi ke worksheet
                     const ws = XLSX.utils.aoa_to_sheet(wsData);
                     const wb = XLSX.utils.book_new();
-                    XLSX.utils.book_append_sheet(wb, ws, "Rekap_Klaim");
-                    
-                    const fileName = `Rekap_Klaim_Terpilih_${new Date().toISOString().split('T')[0]}.xlsx`;
-                    XLSX.writeFile(wb, fileName);
+                    XLSX.utils.book_append_sheet(wb, ws, 'Rekap_Bulanan');
+                    XLSX.writeFile(wb, `Rekap_Layanan_Bulanan_${new Date().toISOString().split('T')[0]}.xlsx`);
                 },
 
-                exportExcel() { alert("Fitur ekspor dashboard aktif."); },
-                
-                exportClaimDetails(claim) {
-                    if (!claim || this.claimDetailRows.length === 0) {
-                        alert('Tidak ada rincian data layanan untuk diekspor. Tunggu data selesai dimuat, lalu coba lagi.');
+                exportDetailRows() {
+                    if (this.detailRows.length === 0) {
+                        alert('Belum ada baris untuk diekspor. Tunggu data selesai dimuat.');
                         return;
                     }
-                    const wsData = [this.claimDetailHeaders, ...this.claimDetailRows.map(r => r.cells)];
+                    const wsData = [
+                        ['Status', 'No. Baris', ...this.detailHeaders],
+                        ...this.detailRows.map(r => [
+                            this.detailClaimedSet.has(r.rowNumber) ? 'Terklaim' : 'Tersedia',
+                            r.rowNumber, ...r.cells
+                        ])
+                    ];
                     const ws = XLSX.utils.aoa_to_sheet(wsData);
                     const wb = XLSX.utils.book_new();
-                    XLSX.utils.book_append_sheet(wb, ws, "Rincian_Klaim");
-                    const fileName = `Klaim_Layanan_${claim.donatur}_${claim.bulan}.xlsx`.replace(/\s+/g, '_');
-                    XLSX.writeFile(wb, fileName);
+                    XLSX.utils.book_append_sheet(wb, ws, 'Detail_Bulan');
+                    XLSX.writeFile(wb, `Layanan_${this.selectedItem.program}_${this.selectedItem.bulan}.xlsx`);
+                },
+
+                exportSelectedClaims() {
+                    const selected = this.claims.filter(c => c.selected);
+                    if (selected.length === 0) {
+                        alert('Pilih setidaknya satu riwayat klaim untuk diekspor.');
+                        return;
+                    }
+                    const wsData = [['Waktu Klaim', 'Bulan Ref', 'Program', 'Donatur', 'Lokasi', 'Sumber Dana', 'Nominal (Rp)', 'Hasil Layanan (Unit)']];
+                    selected.forEach(c => {
+                        wsData.push([c.timestamp, c.bulan, c.program || 'Klinik', c.donatur, c.lokasi, c.sumber, c.nominal, c.hasilLayanan]);
+                    });
+                    const ws = XLSX.utils.aoa_to_sheet(wsData);
+                    const wb = XLSX.utils.book_new();
+                    XLSX.utils.book_append_sheet(wb, ws, 'Rekap_Klaim');
+                    XLSX.writeFile(wb, `Rekap_Klaim_Terpilih_${new Date().toISOString().split('T')[0]}.xlsx`);
+                },
+
+                exportClaimDetails(claim) {
+                    if (!claim || this.claimDetailRows.length === 0) {
+                        alert('Belum ada rincian layanan untuk diekspor. Tunggu data selesai dimuat.');
+                        return;
+                    }
+                    const wsData = [['No. Baris', ...this.claimDetailHeaders], ...this.claimDetailRows.map(r => [r.rowNumber, ...r.cells])];
+                    const ws = XLSX.utils.aoa_to_sheet(wsData);
+                    const wb = XLSX.utils.book_new();
+                    XLSX.utils.book_append_sheet(wb, ws, 'Rincian_Klaim');
+                    XLSX.writeFile(wb, `Klaim_Layanan_${claim.donatur}_${claim.bulan}.xlsx`.replace(/\s+/g, '_'));
                 }
             };
         }
