@@ -837,9 +837,17 @@
                                 this.connectionStatus = 'Gagal terhubung ke server';
                             });
 
-                        unsubKlaim = db.collection(KLAIM_COLLECTION).orderBy('createdAt', 'asc')
+                        unsubKlaim = db.collection(KLAIM_COLLECTION).orderBy('createdAt', 'desc')
                             .onSnapshot((snapshot) => {
-                                this.claims = snapshot.docs.map(doc => ({ id: doc.id, selected: false, ...doc.data() }));
+                                const items = snapshot.docs.map(doc => ({ id: doc.id, selected: false, ...doc.data() }));
+                                // Klaim yang baru disimpan sesaat belum punya createdAt dari server;
+                                // tempatkan di paling atas supaya langsung terlihat.
+                                items.sort((a, b) => {
+                                    const ta = a.createdAt ? a.createdAt.seconds : Infinity;
+                                    const tb = b.createdAt ? b.createdAt.seconds : Infinity;
+                                    return tb - ta;
+                                });
+                                this.claims = items;
                                 this.updateChart();
                             }, (error) => {
                                 console.error('Gagal memuat klaim:', error);
