@@ -232,6 +232,7 @@
                                         <th class="px-6 py-4">No</th>
                                         <th class="px-6 py-4">Program</th>
                                         <th class="px-6 py-4">Bulan</th>
+                                        <th class="px-6 py-4">Tab Sheet</th>
                                         <th class="px-6 py-4 text-center">Layanan</th>
                                         <th class="px-6 py-4">Penyerapan</th>
                                         <th class="px-6 py-4">Unit / Cost</th>
@@ -247,6 +248,7 @@
                                                 <span :class="item.program === 'Ambulance' ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'" class="px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider" x-text="item.program || 'Klinik'"></span>
                                             </td>
                                             <td class="px-6 py-4 font-bold text-gray-800" x-text="item.bulan"></td>
+                                            <td class="px-6 py-4 text-gray-500 font-mono text-xs" x-text="item.sheetTab || '-'"></td>
                                             <td class="px-6 py-4 text-center font-semibold text-gray-600" x-text="item.jumlahLayanan"></td>
                                             <td class="px-6 py-4 font-semibold text-gray-700" x-text="formatIDR(item.penyerapan)"></td>
                                             <td class="px-6 py-4">
@@ -352,9 +354,10 @@
                                         </div>
                                     </div>
 
-                                    <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl shadow-lg shadow-indigo-100 transition-all flex items-center justify-center gap-2">
-                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                                        Simpan Klaim
+                                    <button type="submit" :disabled="isCalculatingClaim" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl shadow-lg shadow-indigo-100 transition-all flex items-center justify-center gap-2 disabled:opacity-50">
+                                        <div x-show="isCalculatingClaim" class="loader ease-linear rounded-full border-2 border-t-2 border-white/40 h-4 w-4"></div>
+                                        <svg x-show="!isCalculatingClaim" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                        <span x-text="isCalculatingClaim ? 'Menghitung...' : 'Simpan Klaim'"></span>
                                     </button>
                                 </form>
                             </div>
@@ -443,28 +446,21 @@
                 </button>
             </div>
             <div class="overflow-y-auto p-6 space-y-6">
-                <!-- Row 1: Upload & Basic Info -->
+                <!-- Row 1: Sumber Data & Basic Info -->
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <!-- Upload File Area -->
+                    <!-- Sumber Data Spreadsheet -->
                     <div class="flex flex-col md:col-span-1">
-                        <label class="block text-sm font-semibold text-gray-700 mb-2">Upload File Laporan (Excel/CSV)</label>
-                        <div class="flex-grow border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center p-6 bg-gray-50 hover:border-indigo-400 hover:bg-indigo-50 transition-all cursor-pointer relative group">
-                            <input type="file" class="absolute inset-0 opacity-0 cursor-pointer" accept=".xlsx, .xls, .csv" @change="handleFileUpload($event)">
-                            <template x-if="!isReadingFile">
-                                <div class="flex flex-col items-center text-center">
-                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 text-gray-400 group-hover:text-indigo-500 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                    </svg>
-                                    <p class="text-xs text-gray-600 font-medium" x-text="form.fileName || 'Klik untuk upload'"></p>
-                                    <p class="text-[10px] text-gray-400 mt-1">Hanya file .xls, .xlsx, atau CSV</p>
-                                </div>
-                            </template>
-                            <template x-if="isReadingFile">
-                                <div class="flex flex-col items-center">
-                                    <div class="loader ease-linear rounded-full border-2 border-t-2 border-gray-200 h-8 w-8 mb-2"></div>
-                                    <p class="text-[10px] text-indigo-600 font-bold animate-pulse">Membaca file data...</p>
-                                </div>
-                            </template>
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">Nama Tab di Google Spreadsheet</label>
+                        <div class="flex-grow border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center p-6 bg-gray-50 gap-3">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2a4 4 0 014-4h4m0 0l-3-3m3 3l-3 3M3 12a9 9 0 1018 0 9 9 0 00-18 0z" />
+                            </svg>
+                            <input type="text" x-model="form.sheetTab" placeholder="Contoh: Klinik_Januari" class="w-full bg-white border border-gray-300 rounded-lg p-2 text-sm text-center focus:ring-2 focus:ring-indigo-500 outline-none">
+                            <button @click="cekDataSheet()" :disabled="isReadingFile || !form.sheetTab" class="w-full text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 px-3 py-2 rounded-lg shadow transition flex items-center justify-center gap-2">
+                                <div x-show="isReadingFile" class="loader ease-linear rounded-full border-2 border-t-2 border-white/40 h-3 w-3"></div>
+                                <span x-text="isReadingFile ? 'Mengambil...' : 'Ambil & Cek Data'"></span>
+                            </button>
+                            <p class="text-[10px] text-gray-400 text-center">Pastikan data sudah ditempel di tab tersebut pada Spreadsheet</p>
                         </div>
                     </div>
 
@@ -496,9 +492,9 @@
                         <div class="p-4 bg-indigo-50 border border-indigo-100 rounded-xl">
                             <div class="flex items-center justify-between">
                                 <div>
-                                    <span class="text-xs font-bold text-indigo-400 uppercase tracking-wider">Hasil Ekstraksi File</span>
+                                    <span class="text-xs font-bold text-indigo-400 uppercase tracking-wider">Hasil Baca Spreadsheet</span>
                                     <div class="flex items-center gap-2">
-                                        <h4 class="text-xl font-bold text-indigo-900" x-text="form.jumlahLayanan !== null ? `${form.jumlahLayanan} Layanan` : 'Menunggu file...'"></h4>
+                                        <h4 class="text-xl font-bold text-indigo-900" x-text="form.jumlahLayanan !== null ? `${form.jumlahLayanan} Layanan` : 'Menunggu data...'"></h4>
                                         <template x-if="form.jumlahLayanan !== null">
                                             <span class="text-[10px] bg-indigo-200 text-indigo-700 px-1.5 py-0.5 rounded font-bold uppercase">Total Baris Ditemukan</span>
                                         </template>
@@ -516,9 +512,9 @@
                     <div class="flex items-center justify-between">
                         <h4 class="font-bold text-gray-800 flex items-center gap-2">
                             <svg class="w-5 h-5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                            Data Laporan Lengkap
+                            Pratinjau Data (langsung dari Spreadsheet)
                         </h4>
-                        <span class="text-[10px] text-gray-400 italic" x-text="`* Menampilkan seluruh ${form.jumlahLayanan} baris data`"></span>
+                        <span class="text-[10px] text-gray-400 italic" x-text="`* Menampilkan maksimal 20 dari ${form.jumlahLayanan} baris data`"></span>
                     </div>
                     <div class="border border-gray-100 rounded-xl overflow-x-auto shadow-sm">
                         <table class="w-full text-[11px] text-left whitespace-nowrap">
@@ -530,7 +526,7 @@
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-50 bg-white">
-                                <template x-for="(row, rIdx) in form.filePreviewData" :key="rIdx">
+                                <template x-for="(row, rIdx) in form.filePreviewData.slice(0, 20)" :key="rIdx">
                                     <tr class="hover:bg-gray-50">
                                         <template x-for="(cell, cIdx) in row" :key="cIdx">
                                             <td class="px-4 py-2" x-text="cell"></td>
@@ -561,7 +557,7 @@
             <div class="p-6 border-b border-gray-100 flex justify-between items-center bg-indigo-900 text-white rounded-t-2xl">
                 <div>
                     <h3 class="text-xl font-bold">Detail Data File</h3>
-                    <p class="text-indigo-200 text-xs" x-text="`Sumber: ${selectedItem?.fileName || 'Data Manual'}`"></p>
+                    <p class="text-indigo-200 text-xs" x-text="`Tab Spreadsheet: ${selectedItem?.sheetTab || '-'}`"></p>
                 </div>
                 <button @click="showDetailModal = false" class="text-indigo-200 hover:text-white">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
@@ -606,33 +602,38 @@
 
                 <h4 class="font-bold text-gray-700 mb-3 flex items-center gap-2">
                     <svg class="w-4 h-4 text-indigo-500" fill="currentColor" viewBox="0 0 20 20"><path d="M7 3a1 1 0 000 2h6a1 1 0 100-2H7zM4 7a1 1 0 011-1h10a1 1 0 110 2H5a1 1 0 01-1-1zM2 11a2 2 0 012-2h12a2 2 0 012 2v4a2 2 0 01-2 2H4a2 2 0 01-2-2v-4z"></path></svg>
-                    Data Layanan (Seluruh Data File)
+                    Data Layanan (Live dari Spreadsheet)
                 </h4>
                 
                 <div class="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-inner">
-                    <template x-if="selectedItem?.filePreviewData && selectedItem.filePreviewData.length > 0">
+                    <template x-if="isLoadingDetail">
+                        <div class="p-8 text-center text-gray-400 italic">Memuat data dari Spreadsheet...</div>
+                    </template>
+                    <template x-if="!isLoadingDetail && detailRows.length > 0">
                         <div class="overflow-x-auto">
                             <table class="w-full text-xs text-left whitespace-nowrap">
                                 <thead class="bg-gray-100 text-gray-500 uppercase text-[10px]">
                                     <tr>
                                         <th class="px-4 py-3">Status</th>
-                                        <template x-for="h in selectedItem.previewHeaders" :key="h">
+                                        <th class="px-4 py-3">No. Baris</th>
+                                        <template x-for="h in detailHeaders" :key="h">
                                             <th class="px-4 py-3" x-text="h"></th>
                                         </template>
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-gray-100">
-                                    <template x-for="(row, ridx) in selectedItem.filePreviewData" :key="ridx">
-                                        <tr :class="ridx < getClaimedUnits(selectedItem.bulan, selectedItem.program) ? 'bg-amber-50/50 text-amber-900 opacity-70' : 'hover:bg-indigo-50/30'">
+                                    <template x-for="row in detailRows" :key="row.rowNumber">
+                                        <tr :class="detailClaimedSet.has(row.rowNumber) ? 'bg-amber-50/50 text-amber-900 opacity-70' : 'hover:bg-indigo-50/30'">
                                             <td class="px-4 py-2">
-                                                <template x-if="ridx < getClaimedUnits(selectedItem.bulan, selectedItem.program)">
+                                                <template x-if="detailClaimedSet.has(row.rowNumber)">
                                                     <span class="px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[9px] font-bold uppercase">Terklaim</span>
                                                 </template>
-                                                <template x-if="ridx >= getClaimedUnits(selectedItem.bulan, selectedItem.program)">
+                                                <template x-if="!detailClaimedSet.has(row.rowNumber)">
                                                     <span class="px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-[9px] font-bold uppercase">Tersedia</span>
                                                 </template>
                                             </td>
-                                            <template x-for="cell in row" :key="cell">
+                                            <td class="px-4 py-2 text-gray-400" x-text="row.rowNumber"></td>
+                                            <template x-for="cell in row.cells" :key="cell">
                                                 <td class="px-4 py-2 text-gray-600" x-text="cell"></td>
                                             </template>
                                         </tr>
@@ -641,9 +642,9 @@
                             </table>
                         </div>
                     </template>
-                    <template x-if="!selectedItem?.filePreviewData || selectedItem.filePreviewData.length === 0">
+                    <template x-if="!isLoadingDetail && detailRows.length === 0">
                         <div class="p-8 text-center">
-                            <p class="text-gray-400 italic">Data pratinjau tidak tersedia untuk entri ini.</p>
+                            <p class="text-gray-400 italic">Data tidak ditemukan. Pastikan nama tab spreadsheet benar dan sudah berisi data.</p>
                         </div>
                     </template>
                 </div>
@@ -663,7 +664,7 @@
                     <p class="text-emerald-100 text-xs" x-text="`Donatur: ${selectedClaim?.donatur} (${selectedClaim?.hasilLayanan} Layanan)`"></p>
                 </div>
                 <div class="flex items-center gap-4">
-                    <button @click="exportClaimDetails(selectedClaim)" class="flex items-center gap-2 bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all" title="Download Excel Rincian">
+                    <button @click="exportClaimDetails(selectedClaim)" :disabled="isLoadingClaimDetail" class="flex items-center gap-2 bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all disabled:opacity-50" title="Download Excel Rincian">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                         Export Excel
                     </button>
@@ -675,30 +676,37 @@
 
             <div class="overflow-y-auto p-6 bg-white">
                 <div class="mb-6 p-4 bg-emerald-50 rounded-xl border border-emerald-100">
-                    <p class="text-xs text-emerald-700 font-medium italic">Data di bawah ini ditarik secara otomatis dari master file sesuai urutan data pertama sejumlah nilai klaim.</p>
+                    <p class="text-xs text-emerald-700 font-medium italic">Data di bawah ini diambil langsung dari Spreadsheet berdasarkan nomor baris yang tercatat pada klaim ini.</p>
                 </div>
                 
                 <div class="border border-gray-100 rounded-xl overflow-hidden shadow-sm">
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-[11px] text-left whitespace-nowrap">
-                            <thead class="bg-gray-50 text-gray-500 uppercase text-[10px]">
-                                <tr>
-                                    <template x-for="h in selectedClaim?.previewHeaders" :key="h">
-                                        <th class="px-4 py-3" x-text="h"></th>
-                                    </template>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-gray-50">
-                                <template x-for="(row, ridx) in selectedClaim?.details" :key="ridx">
-                                    <tr class="hover:bg-gray-50">
-                                        <template x-for="cell in row" :key="cell">
-                                            <td class="px-4 py-2 text-gray-600" x-text="cell"></td>
+                    <template x-if="isLoadingClaimDetail">
+                        <div class="p-8 text-center text-gray-400 italic">Memuat data dari Spreadsheet...</div>
+                    </template>
+                    <template x-if="!isLoadingClaimDetail">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-[11px] text-left whitespace-nowrap">
+                                <thead class="bg-gray-50 text-gray-500 uppercase text-[10px]">
+                                    <tr>
+                                        <th class="px-4 py-3">No. Baris</th>
+                                        <template x-for="h in claimDetailHeaders" :key="h">
+                                            <th class="px-4 py-3" x-text="h"></th>
                                         </template>
                                     </tr>
-                                </template>
-                            </tbody>
-                        </table>
-                    </div>
+                                </thead>
+                                <tbody class="divide-y divide-gray-50">
+                                    <template x-for="row in claimDetailRows" :key="row.rowNumber">
+                                        <tr class="hover:bg-gray-50">
+                                            <td class="px-4 py-2 text-gray-400" x-text="row.rowNumber"></td>
+                                            <template x-for="cell in row.cells" :key="cell">
+                                                <td class="px-4 py-2 text-gray-600" x-text="cell"></td>
+                                            </template>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </template>
                 </div>
             </div>
             <div class="p-4 border-t border-gray-100 flex justify-end">
@@ -750,27 +758,36 @@
         const LAYANAN_COLLECTION = 'claim_donasi_layanan';
         const KLAIM_COLLECTION = 'claim_donasi_klaim';
 
-        // Firestore TIDAK mendukung array di dalam array (nested array) secara langsung.
-        // filePreviewData & details berbentuk larik baris (larik dari larik sel), jadi
-        // sebelum disimpan kita bungkus tiap baris jadi objek {cells: [...]}, lalu
-        // dibongkar kembali saat dibaca agar logika lain di aplikasi tidak perlu berubah.
-        function packRows(rows) {
-            return (rows || []).map(r => ({ cells: r }));
-        }
-        function unpackRows(packed) {
-            return (packed || []).map(r => (r && Array.isArray(r.cells)) ? r.cells : r);
-        }
+        // ==================================================================
+        // KONFIGURASI GOOGLE SHEETS WEB APP — WAJIB DIISI
+        // ==================================================================
+        // Data mentah (baris-baris laporan layanan) kini disimpan di Google
+        // Spreadsheet, BUKAN di Firestore lagi — supaya database tetap ringan.
+        // Firestore hanya menyimpan metadata (program, bulan, penyerapan, dst)
+        // dan status klaim (nomor baris yang sudah diklaim).
+        //
+        // Cara membuat SHEETS_WEBAPP_URL:
+        // 1. Buka Google Spreadsheet Anda -> Extensions > Apps Script.
+        // 2. Hapus isi Code.gs, ganti dengan kode yang saya berikan di chat.
+        // 3. Klik Deploy > New deployment > pilih tipe "Web app".
+        //    - Execute as: Me
+        //    - Who has access: Anyone
+        // 4. Klik Deploy, salin "Web app URL" yang muncul, tempel di bawah ini.
+        // ==================================================================
+        const SHEETS_WEBAPP_URL = "GANTI_DENGAN_URL_WEB_APP_ANDA";
 
-        // Firestore membatasi 1 dokumen maksimal ~1MB. Jika larik baris (rowsField, misalnya
-        // filePreviewData atau details) membuat dokumen jadi terlalu besar, potong sebagian
-        // barisnya secara bertahap agar tetap bisa disimpan. Mengembalikan true jika dipotong.
-        function enforceRowSizeLimit(payload, rowsField) {
-            let wasTrimmed = false;
-            while (JSON.stringify(payload).length > 900000 && Array.isArray(payload[rowsField]) && payload[rowsField].length > 0) {
-                payload[rowsField] = payload[rowsField].slice(0, Math.ceil(payload[rowsField].length / 2));
-                wasTrimmed = true;
+        // Mengambil data (headers + baris) dari 1 tab spreadsheet lewat Apps Script Web App.
+        // Mengembalikan { headers: string[], rows: [{ rowNumber, cells: [...] }] }
+        async function fetchSheetRows(tabName) {
+            if (!SHEETS_WEBAPP_URL || SHEETS_WEBAPP_URL.startsWith('GANTI_DENGAN')) {
+                throw new Error('SHEETS_WEBAPP_URL belum dikonfigurasi. Lihat komentar KONFIGURASI GOOGLE SHEETS WEB APP di dalam kode.');
             }
-            return wasTrimmed;
+            const url = `${SHEETS_WEBAPP_URL}?action=getRows&tab=${encodeURIComponent(tabName)}`;
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`Gagal menghubungi Spreadsheet (status ${res.status})`);
+            const data = await res.json();
+            if (data.error) throw new Error(data.error);
+            return { headers: data.headers || [], rows: data.rows || [] };
         }
 
         // Menerjemahkan error Firestore/Firebase menjadi pesan yang mudah dipahami pengguna
@@ -781,9 +798,6 @@
             }
             if (code === 'unavailable' || code === 'deadline-exceeded') {
                 return 'Server Firestore tidak dapat dijangkau. Periksa koneksi internet Anda dan coba lagi.';
-            }
-            if (code === 'invalid-argument' || (e && /longer than|exceeds|invalid data/i.test(e.message || ''))) {
-                return 'Data yang dikirim tidak valid atau melebihi batas ukuran Firestore (1 dokumen maksimal 1MB). Coba unggah file dengan jumlah baris lebih sedikit.';
             }
             return (e && e.message) ? e.message : 'Kesalahan tidak diketahui.';
         }
@@ -810,6 +824,14 @@
                 editIndex: null,
                 selectedItem: null,
                 selectedClaim: null,
+                detailRows: [],
+                detailHeaders: [],
+                detailClaimedSet: new Set(),
+                isLoadingDetail: false,
+                claimDetailRows: [],
+                claimDetailHeaders: [],
+                isLoadingClaimDetail: false,
+                isCalculatingClaim: false,
                 monthsList: ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'],
                 
                 form: {
@@ -817,7 +839,7 @@
                     bulan: '',
                     penyerapan: '',
                     jumlahLayanan: null,
-                    fileName: '',
+                    sheetTab: '',
                     previewHeaders: [],
                     filePreviewData: []
                 },
@@ -861,10 +883,7 @@
                             .onSnapshot((snapshot) => {
                                 this.isOnline = true;
                                 this.connectionStatus = 'Realtime Aktif (Firestore)';
-                                this.data = snapshot.docs.map(doc => {
-                                    const d = doc.data();
-                                    return { id: doc.id, ...d, filePreviewData: unpackRows(d.filePreviewData) };
-                                });
+                                this.data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                                 this.recalculateSaldo();
                                 this.updateChart();
                             }, (error) => {
@@ -876,10 +895,7 @@
                         // Listener REALTIME untuk data klaim — otomatis update di semua perangkat
                         unsubKlaim = db.collection(KLAIM_COLLECTION).orderBy('createdAt', 'asc')
                             .onSnapshot((snapshot) => {
-                                this.claims = snapshot.docs.map(doc => {
-                                    const d = doc.data();
-                                    return { id: doc.id, selected: false, ...d, details: unpackRows(d.details) };
-                                });
+                                this.claims = snapshot.docs.map(doc => ({ id: doc.id, selected: false, ...doc.data() }));
                                 this.updateChart();
                             }, (error) => {
                                 console.error("Gagal memuat data klaim dari Firestore:", error);
@@ -1090,7 +1106,7 @@
 
                 openAddModal() {
                     this.editIndex = null;
-                    this.form = { program: 'Klinik', bulan: '', penyerapan: '', jumlahLayanan: null, fileName: '', previewHeaders: [], filePreviewData: [] };
+                    this.form = { program: 'Klinik', bulan: '', penyerapan: '', jumlahLayanan: null, sheetTab: '', previewHeaders: [], filePreviewData: [] };
                     this.showAddModal = true;
                 },
 
@@ -1102,65 +1118,85 @@
                         bulan: item.bulan, 
                         penyerapan: item.penyerapan, 
                         jumlahLayanan: item.jumlahLayanan, 
-                        fileName: item.fileName || '', 
-                        filePreviewData: item.filePreviewData || [], 
-                        previewHeaders: item.previewHeaders || [] 
+                        sheetTab: item.sheetTab || '', 
+                        filePreviewData: [], 
+                        previewHeaders: [] 
                     };
                     this.showAddModal = true;
+                    if (this.form.sheetTab) this.cekDataSheet();
                 },
 
-                viewDetails(item) {
+                // Mengambil & menampilkan pratinjau data dari tab Spreadsheet yang dituju,
+                // sekaligus menghitung rasio distribusi cabang untuk logika klaim proporsional.
+                async cekDataSheet() {
+                    if (!this.form.sheetTab) return;
+                    this.isReadingFile = true;
+                    try {
+                        const { headers, rows } = await fetchSheetRows(this.form.sheetTab);
+                        if (rows.length === 0) {
+                            alert('Tab spreadsheet ditemukan tapi tidak berisi data. Pastikan baris 1 berisi header dan data dimulai dari baris 2.');
+                        }
+                        this.form.previewHeaders = headers;
+                        this.form.filePreviewData = rows.map(r => r.cells);
+                        this.form.jumlahLayanan = rows.length;
+                    } catch (e) {
+                        console.error('Gagal mengambil data spreadsheet:', e);
+                        alert('Gagal mengambil data dari Spreadsheet.\n\nPenyebab: ' + e.message);
+                    } finally {
+                        this.isReadingFile = false;
+                    }
+                },
+
+                async viewDetails(item) {
                     this.selectedItem = item;
                     this.showDetailModal = true;
+                    this.isLoadingDetail = true;
+                    this.detailRows = [];
+                    this.detailHeaders = [];
+                    try {
+                        const { headers, rows } = await fetchSheetRows(item.sheetTab);
+                        this.detailHeaders = headers;
+                        this.detailRows = rows;
+                        // Kumpulkan semua nomor baris yang sudah diklaim untuk bulan+program ini
+                        const claimedSet = new Set();
+                        this.claims
+                            .filter(c => c.bulan === item.bulan && (c.program || 'Klinik') === item.program && c.sheetTab === item.sheetTab)
+                            .forEach(c => (c.claimedRows || []).forEach(rn => claimedSet.add(rn)));
+                        this.detailClaimedSet = claimedSet;
+                    } catch (e) {
+                        console.error('Gagal memuat detail dari spreadsheet:', e);
+                        alert('Gagal memuat data dari Spreadsheet.\n\nPenyebab: ' + e.message);
+                    } finally {
+                        this.isLoadingDetail = false;
+                    }
                 },
 
-                viewClaimDetails(claim) {
+                async viewClaimDetails(claim) {
                     this.selectedClaim = claim;
                     this.showClaimDetailModal = true;
+                    this.isLoadingClaimDetail = true;
+                    this.claimDetailRows = [];
+                    this.claimDetailHeaders = [];
+                    try {
+                        const { headers, rows } = await fetchSheetRows(claim.sheetTab);
+                        const claimedRowSet = new Set(claim.claimedRows || []);
+                        this.claimDetailHeaders = headers;
+                        this.claimDetailRows = rows.filter(r => claimedRowSet.has(r.rowNumber));
+                    } catch (e) {
+                        console.error('Gagal memuat detail klaim dari spreadsheet:', e);
+                        alert('Gagal memuat data dari Spreadsheet.\n\nPenyebab: ' + e.message);
+                    } finally {
+                        this.isLoadingClaimDetail = false;
+                    }
                 },
 
                 formatIDR(num) {
                     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(num || 0);
                 },
 
-                handleFileUpload(event) {
-                    const file = event.target.files[0];
-                    if (!file) return;
-                    this.form.fileName = file.name;
-                    this.isReadingFile = true;
-                    const reader = new FileReader();
-                    reader.onload = (e) => {
-                        try {
-                            const data = new Uint8Array(e.target.result);
-                            const workbook = XLSX.read(data, { type: 'array' });
-                            const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-                            const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "-" });
-                            
-                            if (rows.length < 3) {
-                                alert("Data pada file terlalu pendek. Pastikan data dimulai dari baris 3.");
-                                this.isReadingFile = false;
-                                return;
-                            }
-
-                            const headers = rows[0];
-                            const dataRows = rows.slice(2).filter(r => r.some(cell => cell !== "-" && cell !== ""));
-
-                            this.form.jumlahLayanan = dataRows.length;
-                            this.form.previewHeaders = headers;
-                            this.form.filePreviewData = dataRows;
-                            
-                            this.isReadingFile = false;
-                        } catch (error) {
-                            alert("Gagal memproses file.");
-                            this.isReadingFile = false;
-                        }
-                    };
-                    reader.readAsArrayBuffer(file);
-                },
-
                 async submitForm() {
-                    if (!this.form.bulan || !this.form.penyerapan || this.form.jumlahLayanan === null) {
-                        alert("Harap lengkapi semua data!"); return;
+                    if (!this.form.bulan || !this.form.penyerapan || !this.form.sheetTab || this.form.jumlahLayanan === null) {
+                        alert("Harap lengkapi semua data, dan klik 'Ambil & Cek Data' terlebih dahulu!"); return;
                     }
 
                     // Dinamis mengecek kolom cabang atau kantor berdasarkan program yg dimasukkan
@@ -1183,14 +1219,15 @@
                     }
 
                     const penyerapanVal = parseFloat(this.form.penyerapan);
+                    // Hanya simpan METADATA ringan ke Firestore — data mentah tetap di Spreadsheet
                     const finalData = { 
-                        ...this.form, 
+                        program: this.form.program,
+                        bulan: this.form.bulan,
                         penyerapan: penyerapanVal,
+                        jumlahLayanan: this.form.jumlahLayanan,
+                        sheetTab: this.form.sheetTab,
                         branchRatio: branchDistribution
                     };
-                    delete finalData.id; // id & saldo dikelola otomatis, tidak ditulis manual
-                    finalData.filePreviewData = packRows(finalData.filePreviewData); // Firestore tidak mendukung array bersarang
-                    const wasTrimmed = enforceRowSizeLimit(finalData, 'filePreviewData');
 
                     try {
                         if (this.editIndex !== null) {
@@ -1211,18 +1248,14 @@
                     // this.data akan otomatis diperbarui oleh listener realtime (onSnapshot)
                     
                     // Bersihkan Form dan Draft di storage
-                    this.form = { program: 'Klinik', bulan: '', penyerapan: '', jumlahLayanan: null, fileName: '', previewHeaders: [], filePreviewData: [] };
+                    this.form = { program: 'Klinik', bulan: '', penyerapan: '', jumlahLayanan: null, sheetTab: '', previewHeaders: [], filePreviewData: [] };
                     await localforage.removeItem('draft_form');
                     
                     this.showAddModal = false;
                     this.activeMenu = 'laporan';
                     
                     setTimeout(() => {
-                        let msg = "Data berhasil disimpan dan disinkronkan secara realtime ke semua perangkat!";
-                        if (wasTrimmed) {
-                            msg += "\n\nCatatan: file yang diupload cukup besar, sebagian baris preview-nya dipotong otomatis agar muat di database (data penyerapan & jumlah layanan tetap tersimpan utuh).";
-                        }
-                        alert(msg);
+                        alert("Data berhasil disimpan dan disinkronkan secara realtime ke semua perangkat!");
                     }, 100);
                 },
 
@@ -1300,17 +1333,36 @@
                         return;
                     }
 
+                    // Ambil data mentah TERBARU langsung dari Spreadsheet (bukan cache)
+                    this.isCalculatingClaim = true;
+                    let headers, rows;
+                    try {
+                        const fetched = await fetchSheetRows(record.sheetTab);
+                        headers = fetched.headers;
+                        rows = fetched.rows; // [{ rowNumber, cells }]
+                    } catch (e) {
+                        console.error('Gagal mengambil data spreadsheet untuk klaim:', e);
+                        alert('Gagal mengambil data dari Spreadsheet.\n\nPenyebab: ' + e.message);
+                        this.isCalculatingClaim = false;
+                        return;
+                    }
+
                     const targetLokasi = this.claimForm.lokasi.trim();
                     const isNasional = targetLokasi.toLowerCase() === 'nasional';
 
-                    let detailedRows = [];
                     const colKeyword = this.claimForm.program === 'Klinik' ? 'cabang' : 'kantor';
-                    let cabangIdx = record.previewHeaders.findIndex(h => h && h.toString().toLowerCase().includes(colKeyword));
-                    
-                    // Fallback jika tidak ketemu persis, cari salah satunya
+                    let cabangIdx = headers.findIndex(h => h && h.toString().toLowerCase().includes(colKeyword));
                     if (cabangIdx === -1) {
-                        cabangIdx = record.previewHeaders.findIndex(h => h && (h.toString().toLowerCase().includes('cabang') || h.toString().toLowerCase().includes('kantor')));
+                        cabangIdx = headers.findIndex(h => h && (h.toString().toLowerCase().includes('cabang') || h.toString().toLowerCase().includes('kantor')));
                     }
+
+                    // Kumpulkan nomor baris yang SUDAH diklaim sebelumnya untuk bulan+program+tab ini
+                    const claimedRowNumbers = new Set();
+                    this.claims
+                        .filter(c => c.bulan === this.claimForm.bulan && (c.program || 'Klinik') === this.claimForm.program && c.sheetTab === record.sheetTab)
+                        .forEach(c => (c.claimedRows || []).forEach(rn => claimedRowNumbers.add(rn)));
+
+                    let pulledRows = [];
 
                     if (isNasional) {
                         // LOGIKA PENARIKAN PROPORSIONAL (NASIONAL)
@@ -1319,58 +1371,43 @@
                             const branchPullCount = Math.round(totalPull * ratio[branchName]);
                             if (branchPullCount <= 0) return;
 
-                            const branchPool = record.filePreviewData.filter(r => {
+                            const branchPool = rows.filter(r => {
+                                if (claimedRowNumbers.has(r.rowNumber)) return false;
                                 if (cabangIdx === -1) return true;
-                                return r[cabangIdx] === branchName;
+                                return r.cells[cabangIdx] === branchName;
                             });
 
-                            const previouslyClaimedInBranch = this.claims
-                                .filter(c => c.bulan === this.claimForm.bulan && (c.program || 'Klinik') === this.claimForm.program)
-                                .reduce((acc, curr) => {
-                                    const inThisBranch = curr.details.filter(d => cabangIdx === -1 || d[cabangIdx] === branchName).length;
-                                    return acc + inThisBranch;
-                                }, 0);
-
-                            const pulled = branchPool.slice(previouslyClaimedInBranch, previouslyClaimedInBranch + branchPullCount);
-                            detailedRows = detailedRows.concat(pulled);
+                            pulledRows = pulledRows.concat(branchPool.slice(0, branchPullCount));
                         });
                     } else {
                         // LOGIKA PENARIKAN CABANG/KANTOR SPESIFIK
-                        const branchPool = record.filePreviewData.filter(r => {
+                        const branchPool = rows.filter(r => {
+                            if (claimedRowNumbers.has(r.rowNumber)) return false;
                             if (cabangIdx === -1) return true;
-                            // Match location ignoring upper/lowercase
-                            return r[cabangIdx] && r[cabangIdx].toString().toLowerCase() === targetLokasi.toLowerCase();
+                            return r.cells[cabangIdx] && r.cells[cabangIdx].toString().toLowerCase() === targetLokasi.toLowerCase();
                         });
 
-                        const previouslyClaimedInBranch = this.claims
-                            .filter(c => c.bulan === this.claimForm.bulan && (c.program || 'Klinik') === this.claimForm.program)
-                            .reduce((acc, curr) => {
-                                const inThisBranch = curr.details.filter(d => {
-                                    if (cabangIdx === -1) return true;
-                                    return d[cabangIdx] && d[cabangIdx].toString().toLowerCase() === targetLokasi.toLowerCase();
-                                }).length;
-                                return acc + inThisBranch;
-                            }, 0);
-
-                        const availableInBranch = branchPool.length - previouslyClaimedInBranch;
-                        
-                        if (totalPull > availableInBranch) {
-                            alert(`Gagal: Sisa layanan di ${targetLokasi} hanya ${availableInBranch} unit, namun klaim membutuhkan ${totalPull} unit. Klaim dibatalkan.`);
+                        if (totalPull > branchPool.length) {
+                            alert(`Gagal: Sisa layanan di ${targetLokasi} hanya ${branchPool.length} unit, namun klaim membutuhkan ${totalPull} unit. Klaim dibatalkan.`);
+                            this.isCalculatingClaim = false;
                             return;
                         }
 
-                        detailedRows = branchPool.slice(previouslyClaimedInBranch, previouslyClaimedInBranch + totalPull);
+                        pulledRows = branchPool.slice(0, totalPull);
                     }
 
                     const newClaim = {
-                        ...this.claimForm,
+                        program: this.claimForm.program,
+                        bulan: this.claimForm.bulan,
+                        donatur: this.claimForm.donatur,
+                        lokasi: this.claimForm.lokasi,
+                        sumber: this.claimForm.sumber,
                         nominal: parseFloat(this.claimForm.nominal),
-                        hasilLayanan: detailedRows.length,
+                        hasilLayanan: pulledRows.length,
                         timestamp: new Date().toLocaleString('id-ID'),
-                        details: packRows(detailedRows), // Firestore tidak mendukung array bersarang
-                        previewHeaders: record.previewHeaders
+                        sheetTab: record.sheetTab,
+                        claimedRows: pulledRows.map(r => r.rowNumber) // hanya simpan REFERENSI nomor baris, bukan isi selnya
                     };
-                    const wasTrimmed = enforceRowSizeLimit(newClaim, 'details');
 
                     const prevProgram = record.program;
 
@@ -1382,8 +1419,10 @@
                     } catch (e) {
                         console.error('Gagal menyimpan klaim ke Firestore:', e);
                         alert('Gagal menyimpan klaim ke server.\n\nPenyebab: ' + explainFirebaseError(e));
+                        this.isCalculatingClaim = false;
                         return;
                     }
+                    this.isCalculatingClaim = false;
                     // this.claims akan otomatis diperbarui oleh listener realtime (onSnapshot)
                     
                     // Bersihkan Form dan Draft di storage
@@ -1393,11 +1432,7 @@
                     this.activeMenu = 'claims';
 
                     setTimeout(() => {
-                        let msg = `Klaim Berhasil! Menarik ${detailedRows.length} data layanan dari master data ${prevProgram}. Data tersinkron realtime ke semua perangkat.`;
-                        if (wasTrimmed) {
-                            msg += "\n\nCatatan: detail klaim cukup besar, sebagian barisnya dipotong otomatis agar muat di database (jumlah hasil layanan tetap tersimpan utuh).";
-                        }
-                        alert(msg);
+                        alert(`Klaim Berhasil! Menarik ${pulledRows.length} data layanan dari master data ${prevProgram}. Data tersinkron realtime ke semua perangkat.`);
                     }, 100);
                 },
 
@@ -1457,11 +1492,11 @@
                 exportExcel() { alert("Fitur ekspor dashboard aktif."); },
                 
                 exportClaimDetails(claim) {
-                    if (!claim || !claim.details || claim.details.length === 0) {
-                        alert('Tidak ada rincian data layanan untuk diekspor.');
+                    if (!claim || this.claimDetailRows.length === 0) {
+                        alert('Tidak ada rincian data layanan untuk diekspor. Tunggu data selesai dimuat, lalu coba lagi.');
                         return;
                     }
-                    const wsData = [claim.previewHeaders, ...claim.details];
+                    const wsData = [this.claimDetailHeaders, ...this.claimDetailRows.map(r => r.cells)];
                     const ws = XLSX.utils.aoa_to_sheet(wsData);
                     const wb = XLSX.utils.book_new();
                     XLSX.utils.book_append_sheet(wb, ws, "Rincian_Klaim");
