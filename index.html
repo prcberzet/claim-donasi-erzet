@@ -716,16 +716,73 @@
         const SHEET_TAB = { Klinik: 'Klinik', Ambulance: 'Ambulance' };
         const PROGRAMS = ['Klinik', 'Ambulance'];
 
+        // Cadangan bila fetch diblokir CORS: memuat data lewat tag <script>.
+        // Cara ini tidak tunduk pada aturan CORS sama sekali.
+        let jsonpCounter = 0;
+        function callSheetsJsonp(params, timeoutMs = 60000) {
+            return new Promise((resolve, reject) => {
+                const nama = `__sheetsCb${Date.now()}_${jsonpCounter++}`;
+                const script = document.createElement('script');
+                let selesai = false;
+
+                const bersihkan = () => {
+                    delete window[nama];
+                    if (script.parentNode) script.parentNode.removeChild(script);
+                };
+
+                const timer = setTimeout(() => {
+                    if (selesai) return;
+                    selesai = true;
+                    bersihkan();
+                    reject(new Error('Spreadsheet tidak merespons dalam 60 detik. Data mungkin terlalu besar, atau deployment Web App belum diperbarui.'));
+                }, timeoutMs);
+
+                window[nama] = (data) => {
+                    if (selesai) return;
+                    selesai = true;
+                    clearTimeout(timer);
+                    bersihkan();
+                    if (data && data.error) reject(new Error(data.error));
+                    else resolve(data);
+                };
+
+                script.onerror = () => {
+                    if (selesai) return;
+                    selesai = true;
+                    clearTimeout(timer);
+                    bersihkan();
+                    reject(new Error('Web App tidak dapat dihubungi. Pastikan deployment disetel "Who has access: Anyone" dan sudah di-Deploy ulang sebagai New version.'));
+                };
+
+                const qs = new URLSearchParams({ ...params, callback: nama }).toString();
+                script.src = `${SHEETS_WEBAPP_URL}?${qs}`;
+                document.body.appendChild(script);
+            });
+        }
+
         async function callSheets(params) {
             if (!SHEETS_WEBAPP_URL || SHEETS_WEBAPP_URL.startsWith('GANTI_DENGAN')) {
                 throw new Error('SHEETS_WEBAPP_URL belum diisi. Lihat blok KONFIGURASI GOOGLE SHEETS WEB APP di dalam kode.');
             }
-            const qs = new URLSearchParams(params).toString();
-            const res = await fetch(`${SHEETS_WEBAPP_URL}?${qs}`);
-            if (!res.ok) throw new Error(`Spreadsheet tidak merespons (status ${res.status}).`);
-            const data = await res.json();
-            if (data.error) throw new Error(data.error);
-            return data;
+
+            // Coba fetch biasa dulu; bila diblokir CORS (umum terjadi saat file
+            // dibuka lewat file:// atau akses Web App belum "Anyone"),
+            // otomatis beralih ke JSONP.
+            try {
+                const qs = new URLSearchParams(params).toString();
+                const res = await fetch(`${SHEETS_WEBAPP_URL}?${qs}`);
+                if (!res.ok) throw new Error(`Spreadsheet tidak merespons (status ${res.status}).`);
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+                return data;
+            } catch (e) {
+                // Error dari isi respons (bukan jaringan) tidak perlu diulang lewat JSONP
+                if (e instanceof TypeError || /Failed to fetch|NetworkError|CORS/i.test(e.message)) {
+                    console.warn('Fetch diblokir, beralih ke JSONP:', e.message);
+                    return await callSheetsJsonp(params);
+                }
+                throw e;
+            }
         }
 
         // Rekap jumlah layanan per bulan untuk kedua sheet sekaligus.
