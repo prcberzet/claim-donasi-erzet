@@ -515,9 +515,9 @@
                     <p class="text-indigo-200 text-xs" x-text="`Sheet ${selectedItem?.sheetTab || '-'} — ${selectedItem?.bulan || '-'}`"></p>
                 </div>
                 <div class="flex items-center gap-4">
-                    <button @click="exportDetailRows()" :disabled="isLoadingDetail" class="flex items-center gap-2 bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all disabled:opacity-50">
+                    <button @click="exportDetailRows()" :disabled="isLoadingDetail || isExporting" class="flex items-center gap-2 bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all disabled:opacity-50">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                        Export Excel
+                        <span x-text="isExporting ? 'Mengambil...' : 'Export Excel'"></span>
                     </button>
                     <button @click="showDetailModal = false" class="text-indigo-200 hover:text-white">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
@@ -561,8 +561,8 @@
                     </div>
                 </div>
 
-                <p x-show="detailRows.length > batasTampil" class="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 mb-3"
-                   x-text="`Menampilkan ${batasTampil} baris pertama dari ${detailRows.length}. Gunakan Export Excel untuk melihat seluruhnya.`"></p>
+                <p x-show="detailTotal > detailRows.length" class="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 mb-3"
+                   x-text="`Menampilkan ${detailRows.length} baris pertama dari ${detailTotal}. Gunakan Export Excel untuk melihat seluruhnya.`"></p>
 
                 <h4 class="font-bold text-gray-700 mb-3 flex items-center gap-2">
                     <svg class="w-4 h-4 text-indigo-500" fill="currentColor" viewBox="0 0 20 20"><path d="M7 3a1 1 0 000 2h6a1 1 0 100-2H7zM4 7a1 1 0 011-1h10a1 1 0 110 2H5a1 1 0 01-1-1zM2 11a2 2 0 012-2h12a2 2 0 012 2v4a2 2 0 01-2 2H4a2 2 0 01-2-2v-4z"></path></svg>
@@ -628,9 +628,9 @@
                     <p class="text-emerald-100 text-xs" x-text="`Donatur: ${selectedClaim?.donatur} (${selectedClaim?.hasilLayanan} Layanan)`"></p>
                 </div>
                 <div class="flex items-center gap-4">
-                    <button @click="exportClaimDetails(selectedClaim)" :disabled="isLoadingClaimDetail" class="flex items-center gap-2 bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all disabled:opacity-50">
+                    <button @click="exportClaimDetails(selectedClaim)" :disabled="isLoadingClaimDetail || isExporting" class="flex items-center gap-2 bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all disabled:opacity-50">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                        Export Excel
+                        <span x-text="isExporting ? 'Mengambil...' : 'Export Excel'"></span>
                     </button>
                     <button @click="showClaimDetailModal = false" class="text-emerald-100 hover:text-white" title="Tutup">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
@@ -639,8 +639,8 @@
             </div>
 
             <div class="overflow-y-auto p-6 bg-white">
-                <p x-show="claimDetailRows.length > batasTampil" class="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 mb-3"
-                   x-text="`Menampilkan ${batasTampil} baris pertama dari ${claimDetailRows.length}. Gunakan Export Excel untuk melihat seluruhnya.`"></p>
+                <p x-show="claimDetailTotal > claimDetailRows.length" class="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 mb-3"
+                   x-text="`Menampilkan ${claimDetailRows.length} baris pertama dari ${claimDetailTotal}. Gunakan Export Excel untuk melihat seluruhnya.`"></p>
 
                 <div class="mb-6 p-4 bg-emerald-50 rounded-xl border border-emerald-100">
                     <p class="text-xs text-emerald-700 font-medium italic">Baris di bawah diambil langsung dari spreadsheet berdasarkan nomor baris yang tercatat pada klaim ini.</p>
@@ -822,7 +822,37 @@
             const params = { action: 'getRows', tab: tab };
             if (opts.bulan) params.bulan = opts.bulan;
             if (opts.rows && opts.rows.length) params.rows = compressRows(opts.rows);
+            if (opts.limit) params.limit = opts.limit;
+            if (opts.offset) params.offset = opts.offset;
             return callSheets(params);
+        }
+
+        // Daftar ringkas baris satu bulan (nomor baris + cabang saja).
+        function fetchSheetIndex(tab, bulan) {
+            return callSheets({ action: 'getIndex', tab: tab, bulan: bulan });
+        }
+
+        // Ambil seluruh baris secara bertahap. Dipakai saat export, di mana
+        // seluruh data memang dibutuhkan tapi tidak boleh diminta sekaligus.
+        async function fetchAllRows(tab, opts = {}, onProgress = null) {
+            const ukuran = 1000;
+            let offset = 0, headers = [], semua = [], total = null;
+
+            while (true) {
+                const params = { action: 'getRows', tab: tab, limit: ukuran, offset: offset };
+                if (opts.bulan) params.bulan = opts.bulan;
+                if (opts.rows && opts.rows.length) params.rows = compressRows(opts.rows);
+
+                const data = await callSheets(params);
+                headers = data.headers;
+                total = data.total;
+                semua = semua.concat(data.rows);
+                if (onProgress) onProgress(semua.length, total);
+
+                if (!data.hasMore || data.rows.length === 0) break;
+                offset += data.rows.length;
+            }
+            return { headers, rows: semua, total };
         }
 
         function explainFirebaseError(e) {
@@ -865,6 +895,9 @@
                 detailRows: [],
                 detailHeaders: [],
                 batasTampil: 300,
+                detailTotal: 0,
+                claimDetailTotal: 0,
+                isExporting: false,
                 detailClaimedSet: new Set(),
                 isLoadingDetail: false,
                 claimDetailRows: [],
@@ -1267,9 +1300,10 @@
                     this.detailRows = [];
                     this.detailHeaders = [];
                     try {
-                        const { headers, rows } = await fetchSheetRows(item.sheetTab, { bulan: item.bulan });
-                        this.detailHeaders = headers;
-                        this.detailRows = rows;
+                        const data = await fetchSheetRows(item.sheetTab, { bulan: item.bulan, limit: this.batasTampil });
+                        this.detailHeaders = data.headers;
+                        this.detailRows = data.rows;
+                        this.detailTotal = data.total || data.rows.length;
 
                         const claimedSet = new Set();
                         this.claims
@@ -1292,17 +1326,14 @@
                     this.claimDetailHeaders = [];
                     try {
                         const tab = claim.sheetTab || SHEET_TAB[claim.program || 'Klinik'];
-                        const nomor = new Set((claim.claimedRows || []).map(Number));
+                        const nomor = (claim.claimedRows || []).map(Number);
 
-                        // Ambil satu bulan penuh lalu saring di sisi aplikasi.
-                        // Meminta ribuan nomor baris lewat URL akan melebihi
-                        // batas panjang alamat dan ditolak server.
-                        const { headers, rows } = claim.bulan
-                            ? await fetchSheetRows(tab, { bulan: claim.bulan })
-                            : await fetchSheetRows(tab, { rows: [...nomor] });
-
-                        this.claimDetailHeaders = headers;
-                        this.claimDetailRows = rows.filter(r => nomor.has(r.rowNumber));
+                        // Minta persis baris yang diklaim (dipadatkan jadi rentang),
+                        // dan hanya halaman pertama supaya respons tetap ringan.
+                        const data = await fetchSheetRows(tab, { rows: nomor, limit: this.batasTampil });
+                        this.claimDetailHeaders = data.headers;
+                        this.claimDetailRows = data.rows;
+                        this.claimDetailTotal = data.total || data.rows.length;
                     } catch (e) {
                         console.error('Gagal memuat rincian klaim:', e);
                         alert('Gagal memuat data dari spreadsheet.\n\nPenyebab: ' + e.message);
@@ -1376,9 +1407,11 @@
                     this.isCalculatingClaim = true;
                     let rows;
                     try {
-                        // Ambil baris bulan ini langsung dari spreadsheet (data paling baru)
-                        const fetched = await fetchSheetRows(record.sheetTab, { bulan: record.bulan });
-                        rows = fetched.rows;
+                        // Ambil daftar ringkas (nomor baris + cabang) bulan ini.
+                        // Isi sel tidak diperlukan untuk memilih baris, dan
+                        // menariknya akan membuat permintaan terlalu berat.
+                        const fetched = await fetchSheetIndex(record.sheetTab, record.bulan);
+                        rows = fetched.rows.map(r => ({ rowNumber: r.r, cabang: r.c }));
                     } catch (e) {
                         console.error('Gagal mengambil baris untuk klaim:', e);
                         alert('Gagal mengambil data dari spreadsheet.\n\nPenyebab: ' + e.message);
@@ -1510,14 +1543,28 @@
                     XLSX.writeFile(wb, `Rekap_Layanan_Bulanan_${new Date().toISOString().split('T')[0]}.xlsx`);
                 },
 
-                exportDetailRows() {
+                async exportDetailRows() {
                     if (this.detailRows.length === 0) {
                         alert('Belum ada baris untuk diekspor. Tunggu data selesai dimuat.');
                         return;
                     }
+                    if (this.detailTotal > 5000 &&
+                        !confirm(`Bulan ini berisi ${this.detailTotal} baris. Pengambilan bisa memakan waktu satu-dua menit. Lanjutkan?`)) return;
+
+                    this.isExporting = true;
+                    let semua;
+                    try {
+                        semua = await fetchAllRows(this.selectedItem.sheetTab, { bulan: this.selectedItem.bulan });
+                    } catch (e) {
+                        this.isExporting = false;
+                        alert('Gagal mengambil seluruh data.\n\nPenyebab: ' + e.message);
+                        return;
+                    }
+                    this.isExporting = false;
+
                     const wsData = [
-                        ['Status', 'No. Baris', ...this.detailHeaders],
-                        ...this.detailRows.map(r => [
+                        ['Status', 'No. Baris', ...semua.headers],
+                        ...semua.rows.map(r => [
                             this.detailClaimedSet.has(r.rowNumber) ? 'Terklaim' : 'Tersedia',
                             r.rowNumber, ...r.cells
                         ])
@@ -1544,12 +1591,27 @@
                     XLSX.writeFile(wb, `Rekap_Klaim_Terpilih_${new Date().toISOString().split('T')[0]}.xlsx`);
                 },
 
-                exportClaimDetails(claim) {
+                async exportClaimDetails(claim) {
                     if (!claim || this.claimDetailRows.length === 0) {
                         alert('Belum ada rincian layanan untuk diekspor. Tunggu data selesai dimuat.');
                         return;
                     }
-                    const wsData = [['No. Baris', ...this.claimDetailHeaders], ...this.claimDetailRows.map(r => [r.rowNumber, ...r.cells])];
+                    if (this.claimDetailTotal > 5000 &&
+                        !confirm(`Klaim ini mencakup ${this.claimDetailTotal} baris. Pengambilan bisa memakan waktu satu-dua menit. Lanjutkan?`)) return;
+
+                    this.isExporting = true;
+                    let semua;
+                    try {
+                        const tab = claim.sheetTab || SHEET_TAB[claim.program || 'Klinik'];
+                        semua = await fetchAllRows(tab, { rows: (claim.claimedRows || []).map(Number) });
+                    } catch (e) {
+                        this.isExporting = false;
+                        alert('Gagal mengambil seluruh data.\n\nPenyebab: ' + e.message);
+                        return;
+                    }
+                    this.isExporting = false;
+
+                    const wsData = [['No. Baris', ...semua.headers], ...semua.rows.map(r => [r.rowNumber, ...r.cells])];
                     const ws = XLSX.utils.aoa_to_sheet(wsData);
                     const wb = XLSX.utils.book_new();
                     XLSX.utils.book_append_sheet(wb, ws, 'Rincian_Klaim');
