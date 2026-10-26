@@ -727,7 +727,7 @@
         // Nama sheet di spreadsheet, satu sheet per program, berisi data satu tahun.
         // Dinaikkan setiap kali file ini berubah. Ditampilkan di sidebar
         // supaya ketahuan bila browser masih memuat versi lama dari cache.
-        const APP_VERSION = '3.0';
+        const APP_VERSION = '3.1';
 
         const SHEET_TAB = { Klinik: 'Klinik', Ambulance: 'Ambulance' };
         const PROGRAMS = ['Klinik', 'Ambulance'];
@@ -1080,12 +1080,20 @@
                             ? `Spreadsheet: ${daftar.length - gagal.length}/${daftar.length} bulan`
                             : 'Spreadsheet: tersambung';
 
-                        await localforage.setItem('sheet_summary_cache', {
-                            sheets: JSON.parse(JSON.stringify(this.sheetSummary)),
-                            bulanTersedia: this.bulanTersedia,
-                            sumberBulan: this.sumberBulan,
-                            lastSync: this.lastSync
-                        });
+                        // Seluruh isi disalin jadi objek biasa. Objek reaktif
+                        // Alpine tidak bisa disimpan ke IndexedDB apa adanya.
+                        // Cache hanya mempercepat tampilan awal, jadi
+                        // kegagalannya tidak boleh menggagalkan sinkronisasi.
+                        try {
+                            await localforage.setItem('sheet_summary_cache', JSON.parse(JSON.stringify({
+                                sheets: this.sheetSummary,
+                                bulanTersedia: this.bulanTersedia,
+                                sumberBulan: this.sumberBulan,
+                                lastSync: this.lastSync
+                            })));
+                        } catch (e) {
+                            console.warn('Cache lokal gagal disimpan, data tetap aktif:', e);
+                        }
                         this.updateChart();
 
                         if (!silent && gagal.length) {
