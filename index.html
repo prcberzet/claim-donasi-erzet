@@ -69,9 +69,10 @@
                 <button @click="syncSpreadsheet()" :disabled="isSyncing" class="w-full flex items-center justify-center gap-2 bg-indigo-700 hover:bg-indigo-600 disabled:opacity-50 text-white text-xs font-bold px-3 py-2.5 rounded-lg transition-all">
                     <div x-show="isSyncing" class="loader ease-linear rounded-full border-2 border-t-2 border-white/40 h-3 w-3"></div>
                     <svg x-show="!isSyncing" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                    <span x-text="isSyncing ? 'Menarik data...' : 'Sinkronkan Spreadsheet'"></span>
+                    <span x-text="isSyncing ? (syncProgress ? `Menarik ${syncProgress}` : 'Menarik data...') : 'Sinkronkan Spreadsheet'"></span>
                 </button>
                 <p class="text-[10px] text-indigo-300 mt-3 leading-relaxed" x-text="lastSync ? `Terakhir disinkronkan ${lastSync}` : 'Belum pernah disinkronkan'"></p>
+                <p class="text-[10px] text-indigo-400 mt-1 font-mono" x-text="`Aplikasi v${APP_VERSION}`"></p>
             </div>
         </aside>
 
@@ -191,7 +192,7 @@
                         </div>
                         <button @click="syncSpreadsheet()" :disabled="isSyncing" class="flex items-center justify-center gap-2 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap">
                             <div x-show="isSyncing" class="loader ease-linear rounded-full border-2 border-t-2 border-white/40 h-3 w-3"></div>
-                            <span x-text="isSyncing ? 'Menarik data...' : 'Tarik ulang data'"></span>
+                            <span x-text="isSyncing ? (syncProgress ? `Menarik ${syncProgress}` : 'Menarik data...') : 'Tarik ulang semua bulan'"></span>
                         </button>
                     </div>
 
@@ -278,6 +279,11 @@
                                                         <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                                        </svg>
+                                                    </button>
+                                                    <button @click="syncSpreadsheet(false, item.bulan)" :disabled="isSyncing" class="p-1.5 text-sky-400 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition-all disabled:opacity-40" title="Tarik ulang bulan ini saja">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                                                         </svg>
                                                     </button>
                                                     <button @click="openPenyerapanModal(item)" class="p-1.5 text-amber-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all" title="Ubah penyerapan dana">
@@ -719,6 +725,10 @@
         const SHEETS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbxwkdSWW5fe3Vw_4I6Xj3Me3wa5kTji2DySULidpof2186oLseyV93d2xCYCb9ghCT5/exec";
 
         // Nama sheet di spreadsheet, satu sheet per program, berisi data satu tahun.
+        // Dinaikkan setiap kali file ini berubah. Ditampilkan di sidebar
+        // supaya ketahuan bila browser masih memuat versi lama dari cache.
+        const APP_VERSION = '3.0';
+
         const SHEET_TAB = { Klinik: 'Klinik', Ambulance: 'Ambulance' };
         const PROGRAMS = ['Klinik', 'Ambulance'];
 
@@ -796,9 +806,15 @@
             }
         }
 
-        // Rekap jumlah layanan per bulan untuk kedua sheet sekaligus.
-        function fetchSheetSummary() {
-            return callSheets({ action: 'getSummary' });
+        // Daftar bulan yang sudah punya spreadsheet di Apps Script.
+        function fetchSheetConfig() {
+            return callSheets({ action: 'getConfig' });
+        }
+
+        // Rekap satu bulan (kedua sheet). Satu permintaan = satu spreadsheet,
+        // supaya tidak pernah membuka 12 spreadsheet sekaligus.
+        function fetchSheetSummary(bulan) {
+            return callSheets({ action: 'getSummary', bulan: bulan });
         }
 
         // Ubah [5,6,7,20,21] menjadi "5-7,20-21" agar URL tetap pendek.
@@ -830,6 +846,17 @@
         // Daftar ringkas baris satu bulan (nomor baris + cabang saja).
         function fetchSheetIndex(tab, bulan) {
             return callSheets({ action: 'getIndex', tab: tab, bulan: bulan });
+        }
+
+        // Jalankan beberapa tugas bergantian dengan jeda kecil, agar Apps
+        // Script tidak menerima belasan permintaan berat secara bersamaan.
+        async function jalankanBerurutan(daftar, tugas, onProgress) {
+            const hasil = [];
+            for (let i = 0; i < daftar.length; i++) {
+                hasil.push(await tugas(daftar[i], i));
+                if (onProgress) onProgress(i + 1, daftar.length, daftar[i]);
+            }
+            return hasil;
         }
 
         // Ambil seluruh baris secara bertahap. Dipakai saat export, di mana
@@ -874,13 +901,17 @@
             let autoSyncTimer = null;
 
             return {
+                APP_VERSION: APP_VERSION,
                 activeMenu: 'dashboard',
                 isOnline: false,
                 connectionStatus: 'Menghubungkan ke server...',
                 sheetStatus: 'Spreadsheet: menunggu',
                 sheetError: '',
                 isSyncing: false,
+                syncProgress: '',
                 lastSync: '',
+                bulanTersedia: [],
+                sumberBulan: {},
                 searchQuery: '',
                 filterProgram: 'Semua',
                 filterBulan: 'Semua',
@@ -927,6 +958,8 @@
                         if (cache && cache.sheets) {
                             this.sheetSummary = cache.sheets;
                             this.lastSync = cache.lastSync || '';
+                            this.bulanTersedia = cache.bulanTersedia || [];
+                            this.sumberBulan = cache.sumberBulan || {};
                             this.sheetStatus = 'Spreadsheet: dari cache';
                         }
                         const draftClaim = await localforage.getItem('draft_claim');
@@ -980,9 +1013,16 @@
                     this.syncSpreadsheet(true);
 
                     // Segarkan cermin spreadsheet tiap 5 menit selama tab terbuka
+                    // Penyegaran otomatis hanya untuk bulan berjalan.
+                    // Menarik seluruh bulan tiap beberapa menit akan membuka
+                    // belasan spreadsheet dan membebani Apps Script.
                     autoSyncTimer = setInterval(() => {
-                        if (!document.hidden) this.syncSpreadsheet(true);
-                    }, 5 * 60 * 1000);
+                        if (document.hidden) return;
+                        const bulanIni = this.monthsList[new Date().getMonth()];
+                        if (this.bulanTersedia.includes(bulanIni)) {
+                            this.syncSpreadsheet(true, bulanIni);
+                        }
+                    }, 10 * 60 * 1000);
 
                     this.$watch('claimForm', async (value) => {
                         try { await localforage.setItem('draft_claim', JSON.parse(JSON.stringify(value))); } catch (e) {}
@@ -1002,21 +1042,55 @@
                 /* ---------------------------------------------------------- */
                 /* MIRRORING SPREADSHEET                                       */
                 /* ---------------------------------------------------------- */
-                async syncSpreadsheet(silent = false) {
+                async syncSpreadsheet(silent = false, hanyaBulan = null) {
                     if (this.isSyncing) return;
                     this.isSyncing = true;
-                    this.sheetStatus = 'Spreadsheet: menarik data...';
+                    this.syncProgress = '';
+
                     try {
-                        const summary = await fetchSheetSummary();
-                        this.sheetSummary = summary.sheets || {};
+                        // Cari tahu bulan mana saja yang punya spreadsheet
+                        const cfg = await fetchSheetConfig();
+                        this.bulanTersedia = cfg.bulanTersedia || [];
+                        this.sumberBulan = cfg.sumber || {};
+
+                        if (this.bulanTersedia.length === 0) {
+                            throw new Error('Belum ada spreadsheet yang terdaftar. Isi ID tiap bulan pada daftar SPREADSHEETS di Apps Script.');
+                        }
+
+                        const daftar = hanyaBulan ? [hanyaBulan] : this.bulanTersedia;
+                        const gagal = [];
+
+                        // Satu bulan per permintaan, dijalankan bergantian.
+                        await jalankanBerurutan(daftar, async (bulan) => {
+                            this.syncProgress = bulan;
+                            try {
+                                const hasil = await fetchSheetSummary(bulan);
+                                this.serapSummaryBulan(bulan, hasil);
+                            } catch (e) {
+                                console.error(`Gagal menarik bulan ${bulan}:`, e);
+                                gagal.push(`${bulan}: ${e.message}`);
+                            }
+                        }, (selesai, total, bulan) => {
+                            this.syncProgress = `${bulan} (${selesai}/${total})`;
+                        });
+
                         this.lastSync = new Date().toLocaleString('id-ID');
-                        this.sheetError = '';
-                        this.sheetStatus = 'Spreadsheet: tersambung';
+                        this.sheetError = gagal.length ? gagal.join(' · ') : '';
+                        this.sheetStatus = gagal.length
+                            ? `Spreadsheet: ${daftar.length - gagal.length}/${daftar.length} bulan`
+                            : 'Spreadsheet: tersambung';
+
                         await localforage.setItem('sheet_summary_cache', {
                             sheets: JSON.parse(JSON.stringify(this.sheetSummary)),
+                            bulanTersedia: this.bulanTersedia,
+                            sumberBulan: this.sumberBulan,
                             lastSync: this.lastSync
                         });
                         this.updateChart();
+
+                        if (!silent && gagal.length) {
+                            alert('Sebagian bulan gagal ditarik:\n\n' + gagal.join('\n'));
+                        }
                     } catch (e) {
                         console.error('Gagal menarik data spreadsheet:', e);
                         this.sheetError = e.message;
@@ -1024,18 +1098,46 @@
                         if (!silent) alert('Gagal menarik data dari spreadsheet.\n\nPenyebab: ' + e.message);
                     } finally {
                         this.isSyncing = false;
+                        this.syncProgress = '';
                     }
                 },
 
+                // Gabungkan hasil satu bulan ke dalam cermin, tanpa menghapus
+                // bulan lain yang sudah lebih dulu ditarik.
+                serapSummaryBulan(bulan, hasil) {
+                    const sheets = (hasil && hasil.sheets) ? hasil.sheets : {};
+                    PROGRAMS.forEach(program => {
+                        const masuk = sheets[program];
+                        if (!masuk) return;
+
+                        if (!this.sheetSummary[program]) {
+                            this.sheetSummary[program] = { tab: program, headers: masuk.headers || [], months: [] };
+                        }
+                        const simpan = this.sheetSummary[program];
+                        simpan.headers = masuk.headers || simpan.headers;
+                        simpan.tab = masuk.tab || program;
+
+                        const lain = (simpan.months || []).filter(m => m.bulan !== bulan);
+                        const baru = (masuk.months || []).filter(m => m.jumlahLayanan > 0);
+                        simpan.months = lain.concat(baru)
+                            .sort((a, b) => this.monthsList.indexOf(a.bulan) - this.monthsList.indexOf(b.bulan));
+                    });
+                    // Picu reaktivitas Alpine
+                    this.sheetSummary = { ...this.sheetSummary };
+                },
+
                 get mirrorInfoText() {
-                    const parts = [];
+                    if (this.bulanTersedia.length === 0) {
+                        return 'Belum ada data. Klik "Tarik ulang semua bulan".';
+                    }
+                    const termuat = new Set();
                     PROGRAMS.forEach(p => {
                         const s = this.sheetSummary[p];
-                        if (!s) return;
-                        parts.push(`Sheet ${p}: ${s.totalBaris} baris, ${s.months.length} bulan terbaca` + (s.tanpaBulan ? `, ${s.tanpaBulan} baris tanpa bulan` : ''));
+                        if (s && s.months) s.months.forEach(m => termuat.add(m.bulan));
                     });
-                    if (parts.length === 0) return 'Belum ada data. Klik "Tarik ulang data".';
-                    return parts.join(' · ');
+                    const perBulan = Object.values(this.sumberBulan).filter(v => v === 'spreadsheet bulanan').length;
+                    return `${termuat.size} bulan termuat dari ${this.bulanTersedia.length} bulan terdaftar` +
+                           (perBulan ? ` · ${perBulan} bulan memakai spreadsheet sendiri` : '');
                 },
 
                 /* ---------------------------------------------------------- */
@@ -1330,7 +1432,7 @@
 
                         // Minta persis baris yang diklaim (dipadatkan jadi rentang),
                         // dan hanya halaman pertama supaya respons tetap ringan.
-                        const data = await fetchSheetRows(tab, { rows: nomor, limit: this.batasTampil });
+                        const data = await fetchSheetRows(tab, { bulan: claim.bulan, rows: nomor, limit: this.batasTampil });
                         this.claimDetailHeaders = data.headers;
                         this.claimDetailRows = data.rows;
                         this.claimDetailTotal = data.total || data.rows.length;
@@ -1603,7 +1705,7 @@
                     let semua;
                     try {
                         const tab = claim.sheetTab || SHEET_TAB[claim.program || 'Klinik'];
-                        semua = await fetchAllRows(tab, { rows: (claim.claimedRows || []).map(Number) });
+                        semua = await fetchAllRows(tab, { bulan: claim.bulan, rows: (claim.claimedRows || []).map(Number) });
                     } catch (e) {
                         this.isExporting = false;
                         alert('Gagal mengambil seluruh data.\n\nPenyebab: ' + e.message);
